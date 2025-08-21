@@ -1,10 +1,10 @@
 # streamlit_app.py
-# Matriz de seguimiento SERVQUAL – APROFAM (persistente)
-# - Subproblema por fila (AG Grid) con fix JS (sin .forEach error)
+# Matriz de seguimiento SERVQUAL – APROFAM (persistente + fix update_mode + restaurar backup)
+# - Subproblema por fila (AG Grid) con fix JS (JSON.parse -> array)
 # - Validaciones OBLIGATORIAS: Subproblema, Responsable, Estado, Sucursal
 # - Eliminar filas seleccionadas
 # - Exportar a Excel (solo si validaciones OK)
-# - Persistencia: autosave a /storage/matriz.json + backups
+# - Persistencia: autosave a /storage/matriz.json + backups (restauración desde UI)
 # - Importar desde Excel/JSON
 # - Login: admin / Aprof@n2025
 
@@ -188,7 +188,6 @@ def _coerce_types(df: pd.DataFrame) -> pd.DataFrame:
             df[c] = df[c].astype(object)
     return df
 
-# ----- persistence helpers -----
 def save_df():
     df = _coerce_types(st.session_state.df.copy())
     df_save = df.copy()
@@ -196,15 +195,13 @@ def save_df():
         df_save["Fecha seguimiento"] = pd.to_datetime(df_save["Fecha seguimiento"], errors="coerce").dt.strftime("%Y-%m-%d")
     os.makedirs(DATA_DIR, exist_ok=True)
     df_save.to_json(DATA_FILE, orient="records", force_ascii=False)
-    # backups
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_dir = os.path.join(DATA_DIR, "backups")
-    os.makedirs(backup_dir, exist_ok=True)
-    df_save.to_json(os.path.join(backup_dir, f"matriz_{ts}.json"), orient="records", force_ascii=False)
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    df_save.to_json(os.path.join(BACKUP_DIR, f"matriz_{ts}.json"), orient="records", force_ascii=False)
     try:
-        files = sorted([f for f in os.listdir(backup_dir) if f.startswith("matriz_")])
+        files = sorted([f for f in os.listdir(BACKUP_DIR) if f.startswith("matriz_")])
         for f in files[:-10]:
-            os.remove(os.path.join(backup_dir, f))
+            os.remove(os.path.join(BACKUP_DIR, f))
     except Exception:
         pass
 
@@ -232,25 +229,42 @@ st.write(
 )
 st.divider()
 
-# ----- Import -----
-with st.expander("📥 Importar matriz (Excel .xlsx o JSON exportado)", expanded=False):
+# ----- Import & Restore -----
+with st.expander("📥 Importar matriz (Excel .xlsx o JSON exportado) / 🔁 Restaurar backup", expanded=False):
     up = st.file_uploader("Elegir archivo", type=["xlsx","json"])
-    if up and st.button("Cargar archivo", type="primary"):
-        try:
-            if up.name.lower().endswith(".xlsx"):
-                df_new = pd.read_excel(up)
-            else:
-                df_new = pd.read_json(up, orient="records")
-            df_new = df_new[[c for c in DEFAULT_COLS if c in df_new.columns]]
-            for c in DEFAULT_COLS:
-                if c not in df_new.columns:
-                    df_new[c] = "" if c != "% Avance" else 0
-            st.session_state.df = _coerce_types(df_new[DEFAULT_COLS])
-            save_df()
-            st.success("Matriz cargada y guardada.")
-            st.rerun()
-        except Exception as e:
-            st.error(f"No se pudo importar: {e}")
+    c1, c2 = st.columns([1,1])
+    with c1:
+        if up and st.button("Cargar archivo", type="primary"):
+            try:
+                if up.name.lower().endswith(".xlsx"):
+                    df_new = pd.read_excel(up)
+                else:
+                    df_new = pd.read_json(up, orient="records")
+                df_new = df_new[[c for c in DEFAULT_COLS if c in df_new.columns]]
+                for c in DEFAULT_COLS:
+                    if c not in df_new.columns:
+                        df_new[c] = "" if c != "% Avance" else 0
+                st.session_state.df = _coerce_types(df_new[DEFAULT_COLS])
+                save_df()
+                st.success("Matriz cargada y guardada.")
+                st.rerun()
+            except Exception as e:
+                st.error(f"No se pudo importar: {e}")
+    with c2:
+        backups = sorted([f for f in os.listdir(BACKUP_DIR) if f.startswith("matriz_")], reverse=True)
+        if backups:
+            ch = st.selectbox("Elegir backup", backups)
+            if st.button("Restaurar seleccionado"):
+                try:
+                    df_b = pd.read_json(os.path.join(BACKUP_DIR, ch), orient="records")
+                    st.session_state.df = _coerce_types(df_b)
+                    save_df()
+                    st.success(f"Restaurado {ch}")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"No se pudo restaurar: {e}")
+        else:
+            st.caption("No hay backups aún. Al guardar se crearán automáticamente.")
 
 # ----- Filters -----
 st.markdown("<div class='section-title'>Filtros de visualización</div>", unsafe_allow_html=True)
@@ -323,9 +337,7 @@ selected_idxs = []
 
 if _AGGRID_OK:
     df_ag = df_view.copy().reset_index().rename(columns={"index":"___idx"})
-    df_ag["subOptions"] = df_ag["Código"].apply(lambda c: tuple([""] + SUBPROBLEMAS.get(c, [])))
-    import json as _json
-    df_ag["subOptionsJs"] = df_ag["Código"].apply(lambda c: _json.dumps([""] + SUBPROBLEMAS.get(c, [])))
+    df_ag["subOptionsJs"] = df_ag["Código"].apply(lambda c: json.dumps([""] + SUBPROBLEMAS.get(c, [])))
     if "Fecha seguimiento" in df_ag.columns:
         df_ag["Fecha seguimiento"] = pd.to_datetime(df_ag["Fecha seguimiento"], errors="coerce").dt.strftime("%Y-%m-%d")
 
@@ -364,16 +376,15 @@ if _AGGRID_OK:
     gob.configure_column("% Avance", type=["numericColumn"], editable=True, width=120)
 
     gob.configure_column("___idx", hide=True)
-    gob.configure_column("subOptions", hide=True)
     gob.configure_column("subOptionsJs", hide=True)
 
     row_rules = {
         "missingRow": JsCode("""function(p){
-            var ok1 = (p.data["Subproblema identificado"]||"").trim() !== "";
-            var ok2 = (p.data["Responsable"]||"").trim() !== "";
-            var ok3 = (p.data["Estado"]||"").trim() !== "";
-            var ok4 = (p.data["Sucursal"]||"").trim() !== "";
-            return !(ok1 && ok2 && ok3 && ok4);
+            function nonEmpty(v){return (v||"").toString().trim() !== ""}
+            return !( nonEmpty(p.data["Subproblema identificado"]) &&
+                      nonEmpty(p.data["Responsable"]) &&
+                      nonEmpty(p.data["Estado"]) &&
+                      nonEmpty(p.data["Sucursal"]) );
         }""")
     }
     css = { "missingRow": {"backgroundColor":"#FFF5F5"} }
@@ -383,7 +394,8 @@ if _AGGRID_OK:
     grid = AgGrid(
         df_ag,
         gridOptions=grid_opts,
-        update_mode=GridUpdateMode.VALUE_CHANGED | GridUpdateMode.SELECTION_CHANGED,
+        # IMPORTANT: pass list (not bitwise OR) to avoid o.forEach errors
+        update_mode=[GridUpdateMode.VALUE_CHANGED, GridUpdateMode.SELECTION_CHANGED],
         allow_unsafe_jscode=True,
         fit_columns_on_grid_load=False,
         height=520,
