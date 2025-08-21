@@ -3,6 +3,13 @@ import pandas as pd
 from io import BytesIO
 from datetime import date
 
+try:
+    from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, JsCode
+    _AGGRID_OK = True
+except Exception:
+    _AGGRID_OK = False
+
+
 # ---------- ESTILO / BRANDING ----------
 PRIMARY = "#1160C7"
 YELLOW  = "#FFC600"
@@ -301,29 +308,82 @@ if f_suc:
 if len(st.session_state.df) and df_view.empty:
     st.info("No hay filas que coincidan con los filtros activos. Revisa Responsable/Estado/Sucursal.")
 
-st.write("### 🧾 Matriz (editable)")
-edited = st.data_editor(
-    df_view,
-    num_rows="dynamic",
-    use_container_width=True,
-    column_config={
-        "Código": st.column_config.SelectboxColumn(options=[c for c,_ in PREGUNTAS], help="Código de la pregunta"),
-        "Dimensión": st.column_config.SelectboxColumn(options=CAT_DIM),
-        "Pregunta evaluada": st.column_config.SelectboxColumn(options=[f"{c} – {t}" for c,t in PREGUNTAS], width="large", help="Se muestra el texto completo"),
-        "Subproblema identificado": st.column_config.SelectboxColumn(options=[""]+ALL_SUBP_OPTIONS, help="Elige un subproblema (lista global). Usa el asistente para ver solo los de este código."),
-        "Responsable": st.column_config.SelectboxColumn(options=[""]+CAT_RESPONSABLES),
-        "Plazo": st.column_config.TextColumn(help=f"Formato sugerido: {CAT_PLAZO_SUG}"),
-        "Estado": st.column_config.SelectboxColumn(options=CAT_ESTADO),
-        "Sucursal": st.column_config.SelectboxColumn(options=SUCURSALES),
-        "% Avance": st.column_config.NumberColumn(format="%.0f", min_value=0, max_value=100, step=5),
-        "Fecha seguimiento": st.column_config.DateColumn(),
-    },
-    hide_index=True
-)
 
-if not edited.equals(df_view):
-    idx_global = st.session_state.df.index[df_view.index]
-    st.session_state.df.loc[idx_global, :] = edited.values
+st.write("### 🧾 Matriz (editable)")
+
+# --- Vista con AG Grid (dropdown por fila) ---
+if _AGGRID_OK:
+    df_ag = df_view.copy().reset_index().rename(columns={"index": "___idx"})
+    # construir opciones por fila
+    df_ag["subOptions"] = df_ag["Código"].apply(lambda c: ([""] + SUBPROBLEMAS.get(c, [])))
+    # render como string para fecha
+    if "Fecha seguimiento" in df_ag.columns:
+        df_ag["Fecha seguimiento"] = pd.to_datetime(df_ag["Fecha seguimiento"], errors="coerce").dt.strftime("%Y-%m-%d")
+
+    gob = GridOptionsBuilder.from_dataframe(df_ag, editable=True)
+    # Hacer columnas editables con selectores
+    gob.configure_column("Código", editable=False)
+    gob.configure_column("Dimensión", editable=False)
+    gob.configure_column("Pregunta evaluada", editable=False, wrapText=True, autoHeight=True)
+    gob.configure_column("Subproblema identificado", editable=True, cellEditor="agSelectCellEditor",
+                         cellEditorParams={"values": JsCode("function(params){return params.data.subOptions || []; }")})
+    gob.configure_column("Responsable", editable=True, cellEditor="agSelectCellEditor",
+                         cellEditorParams={"values": [""] + CAT_RESPONSABLES})
+    gob.configure_column("Estado", editable=True, cellEditor="agSelectCellEditor",
+                         cellEditorParams={"values": CAT_ESTADO})
+    gob.configure_column("Sucursal", editable=True, cellEditor="agSelectCellEditor",
+                         cellEditorParams={"values": SUCURSALES})
+    gob.configure_column("% Avance", type=["numericColumn"], editable=True)
+    gob.configure_column("Fecha seguimiento", editable=True)
+    gob.configure_column("Plazo", editable=True)
+    gob.configure_column("___idx", hide=True)
+
+    grid = AgGrid(
+        df_ag,
+        gridOptions=gob.build(),
+        update_mode=GridUpdateMode.VALUE_CHANGED,
+        fit_columns_on_grid_load=True,
+        allow_unsafe_jscode=True,
+        height=420,
+        theme="alpine"
+    )
+    updated = grid["data"]
+    # actualizar DF global con índices mapeados
+    if updated is not None and len(updated):
+        upd = updated.copy()
+        # parse fecha
+        if "Fecha seguimiento" in upd.columns:
+            upd["Fecha seguimiento"] = pd.to_datetime(upd["Fecha seguimiento"], errors="coerce").dt.date
+        # push cambios a df global
+        for _, row in upd.iterrows():
+            gi = int(row["___idx"])
+            for col in DEFAULT_COLS:
+                if col in upd.columns:
+                    st.session_state.df.at[gi, col] = row.get(col, st.session_state.df.at[gi, col])
+        st.session_state.df = _coerce_types(st.session_state.df)
+else:
+    # --- Fallback: data_editor (lista global) ---
+    edited = st.data_editor(
+        df_view,
+        num_rows="dynamic",
+        use_container_width=True,
+        column_config={
+            "Código": st.column_config.SelectboxColumn(options=[c for c,_ in PREGUNTAS], help="Código de la pregunta"),
+            "Dimensión": st.column_config.SelectboxColumn(options=CAT_DIM),
+            "Pregunta evaluada": st.column_config.SelectboxColumn(options=[f"{c} – {t}" for c,t in PREGUNTAS], width="large", help="Se muestra el texto completo"),
+            "Subproblema identificado": st.column_config.SelectboxColumn(options=[""]+ALL_SUBP_OPTIONS, help="Elige un subproblema (lista global). Usa el asistente para ver solo los de este código."),
+            "Responsable": st.column_config.SelectboxColumn(options=[""]+CAT_RESPONSABLES),
+            "Plazo": st.column_config.TextColumn(help=f"Formato sugerido: {CAT_PLAZO_SUG}"),
+            "Estado": st.column_config.SelectboxColumn(options=CAT_ESTADO),
+            "Sucursal": st.column_config.SelectboxColumn(options=SUCURSALES),
+            "% Avance": st.column_config.NumberColumn(format="%.0f", min_value=0, max_value=100, step=5),
+            "Fecha seguimiento": st.column_config.DateColumn(),
+        },
+        hide_index=True
+    )
+    if not edited.equals(df_view):
+        idx_global = st.session_state.df.index[df_view.index]
+        st.session_state.df.loc[idx_global, :] = edited.values
 
 # ----- Asistente para asignar subproblema por fila -----
 with st.expander("🎯 Asignar subproblema sugerido por código"):
@@ -349,6 +409,12 @@ def to_excel_bytes(df: pd.DataFrame) -> bytes:
     return buffer.getvalue()
 
 st.download_button(
+    "⬇️ Exportar a Excel",
+    data=to_excel_bytes(st.session_state.df),
+    file_name="matriz_servqual_aprofam.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+)
+
     "⬇️ Exportar a Excel",
     data=to_excel_bytes(st.session_state.df),
     file_name="matriz_servqual_aprofam.xlsx",
