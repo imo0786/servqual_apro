@@ -1,4 +1,4 @@
-# SERVQUAL APROFAM • Streamlit App
+# SERVQUAL APROFAM • Streamlit App (última versión con sucursal)
 
 ## Ejecutar local
 ```bash
