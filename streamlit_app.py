@@ -205,7 +205,13 @@ if st.button("➕ Agregar por dimensión", type="primary"):
         })
     if new_rows:
         st.session_state.df = pd.concat([st.session_state.df, pd.DataFrame(new_rows)], ignore_index=True)
+        # Ajustar filtros para mostrar lo recién agregado
+        st.session_state.f_dim = dim_to_add
+        st.session_state.f_resp = (resp_to_add if resp_to_add else "Todos")
+        st.session_state.f_estado = estado_to_add
+        st.session_state.f_suc = [suc_to_add]
         st.success(f"Agregadas {len(new_rows)} filas de {dim_to_add}.")
+        st.rerun()
 
 st.divider()
 
