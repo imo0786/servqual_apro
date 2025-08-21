@@ -1,56 +1,49 @@
+# streamlit_app.py
+# Matriz de seguimiento SERVQUAL – APROFAM (per-row subproblema dropdown, no auto-rellenar)
+
 import streamlit as st
 import pandas as pd
 from io import BytesIO
 from datetime import date
 
+# --------- AG Grid (para dropdown por fila) ---------
 try:
     from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, JsCode
     _AGGRID_OK = True
 except Exception:
     _AGGRID_OK = False
 
-
-# ---------- ESTILO / BRANDING ----------
+# --------- Branding / Estilo ---------
 PRIMARY = "#1160C7"
 YELLOW  = "#FFC600"
 DARK    = "#00315E"
 
-st.set_page_config(page_title="Matriz de Seguimiento SERVQUAL - APROFAM", page_icon="✅", layout="wide")
+st.set_page_config(page_title="Matriz SERVQUAL • APROFAM", page_icon="✅", layout="wide")
 
 st.markdown(
     f"""
     <style>
-    .big-title {{ font-size: 1.6rem; font-weight: 800; color:{DARK}; }}
-    .pill {{
+      .big-title {{ font-size: 1.6rem; font-weight: 800; color:{DARK}; }}
+      .pill {{
         display:inline-block; padding:4px 10px; border-radius:999px;
         font-weight:600; margin-right:6px; font-size:.8rem; color:white; background:{PRIMARY};
-    }}
-    .stButton>button {{
+      }}
+      .stButton>button {{
         background:{PRIMARY}; color:white; border:0; border-radius:10px; padding:8px 16px;
         font-weight:700;
-    }}
-    .section-title {{ font-weight:800; color:{DARK}; margin-top:6px; }}
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-# Extra CSS to envolver texto en el editor
-st.markdown(
-    """
-    <style>
-    div[data-testid="stDataFrame"] div[role="gridcell"] { 
-        white-space: normal !important; 
-        line-height: 1.3 !important;
-    }
-    div[data-testid="stDataFrame"] div[role="row"] { min-height: 46px !important; }
+      }}
+      .section-title {{ font-weight:800; color:{DARK}; margin-top:6px; }}
+      /* Envolver texto y aumentar altura en celdas */
+      div[data-testid="stDataFrame"] div[role="gridcell"] {{ white-space: normal !important; line-height: 1.3 !important; }}
+      div[data-testid="stDataFrame"] div[role="row"] {{ min-height: 46px !important; }}
     </style>
     """,
     unsafe_allow_html=True
 )
 
-# ---------- LOGIN ----------
-def login(username: str, password: str) -> bool:
-    return username.strip().lower() == "admin" and password == "Aprof@n2025"
+# --------- Login ---------
+def login(user: str, pwd: str) -> bool:
+    return user.strip().lower() == "admin" and pwd == "Aprof@n2025"
 
 if "authed" not in st.session_state:
     st.session_state.authed = False
@@ -73,7 +66,7 @@ with st.sidebar:
             st.session_state.clear()
             st.rerun()
 
-# ---------- CATÁLOGOS ----------
+# --------- Catálogos ---------
 CAT_RESPONSABLES = [
     "BRYSEYDA A. ZUÑIGA GOMEZ",
     "DANIEL ALEJANDRO MONTERROSO MORALES",
@@ -100,11 +93,9 @@ SUCURSALES = [
 
 CAT_ESTADO = ["Pendiente", "En progreso", "Completado", "Bloqueado"]
 CAT_PLAZO_SUG = "Ej.: 30 días, 45 días, 2025-09-15"
-
 CAT_DIM = ["FIABILIDAD", "CAPACIDAD DE RESPUESTA", "SEGURIDAD", "EMPATÍA", "ASPECTOS TANGIBLES", "EXPERIENCIA/EXPANSIÓN"]
 
-
-# 28 preguntas con TEXTO COMPLETO (código + redacción)
+# --------- Preguntas (28) con código + texto completo ---------
 PREGUNTAS = [
     ("FIA_P001","¿El personal de recepción le explicó de forma clara y sencilla todos los pasos que debía seguir para su consulta?"),
     ("FIA_P002","¿La atención en caja o el pago de sus servicios fue rápida?"),
@@ -135,7 +126,7 @@ PREGUNTAS = [
     ("EXP_P027","¿Nos considera como su primera opción en servicios de laboratorio, farmacia y ultrasonidos?"),
     ("EXP_P028","¿Recomendaría este hospital/clínica a sus familiares y amigos por la buena atención que recibió?"),
 ]
-# mapa código->dimensión
+
 MAP_DIM = {
     **{k:"FIABILIDAD" for k in ["FIA_P001","FIA_P002","FIA_P003","FIA_P004","FIA_P005"]},
     **{k:"CAPACIDAD DE RESPUESTA" for k in ["CAP_P006","CAP_P007","CAP_P008","CAP_P009"]},
@@ -145,41 +136,44 @@ MAP_DIM = {
     **{k:"EXPERIENCIA/EXPANSIÓN" for k in ["EXP_P022","EXP_P023","EXP_P024","EXP_P025","EXP_P026","EXP_P027","EXP_P028"]},
 }
 
-
-# Subproblemas por código (catálogo completo según tabla)
+# --------- Subproblemas por código ---------
 SUBPROBLEMAS = {
     "FIA_P001": ["FIA_P001A - Explicación confusa","FIA_P001B - Faltó información","FIA_P001C - Personal desatento","FIA_P001D - Lenguaje técnico"],
     "FIA_P002": ["FIA_P002A - Caja muy lenta","FIA_P002B - Cola muy larga","FIA_P002C - Pocos cajeros","FIA_P002D - Sistema muy lento"],
     "FIA_P003": ["FIA_P003A - No respetaron orden","FIA_P003B - Saltaron turnos","FIA_P003C - Sin organización","FIA_P003D - Preferencias injustas"],
-    "FIA_P004": ["FIA_P004A - Explicación rápida","FIA_P004B - Muy técnico","FIA_P004C - Faltó detalle","FIA_P004D - No entendí"],
-    "FIA_P005": ["FIA_P005A - Sin disponibilidad","FIA_P005B - Proceso complicado","FIA_P005C - Mucha espera","FIA_P005D - Sistema deficiente"],
+    "FIA_P004": ["FIA_P004A - Explicación insuficiente","FIA_P004B - Lenguaje técnico","FIA_P004C - Poco tiempo para preguntas"],
+    "FIA_P005": ["FIA_P005A - Dificultad para agendar","FIA_P005B - Canales saturados","FIA_P005C - Información confusa"],
+
     "CAP_P006": ["CAP_P006A - Mucha espera","CAP_P006B - Sistema lento","CAP_P006C - Falta personal","CAP_P006D - Desorganización"],
-    "CAP_P007": ["CAP_P007A - No mencionaron otros servicios","CAP_P007B - Información poco clara / incompleta","CAP_P007C - Personal no conocía los servicios","CAP_P007D - No indagaron necesidades adicionales"],
-    "CAP_P008": ["CAP_P008A - Tardaron en responder","CAP_P008B - No resolvieron mi solicitud","CAP_P008C - Me transfirieron muchas veces","CAP_P008D - Contestaron sin interés"],
-    "CAP_P009": ["CAP_P009A - Precios altos","CAP_P009B - Sin disponibilidad","CAP_P009C - Sin alternativas","CAP_P009D - Me presionaron"],
-    "SEG_P010": ["SEG_P010A - Parecían inexpertos","SEG_P010B - Dudaron mucho","SEG_P010C - Respuestas contradictorias","SEG_P010D - Falta seguridad"],
-    "SEG_P011": ["SEG_P011A - Examen superficial","SEG_P011B - Muy rápido","SEG_P011C - Incompleta","SEG_P011D - No evaluaron"],
-    "SEG_P012": ["SEG_P012A - Mucha prisa","SEG_P012B - No preguntó","SEG_P012C - Consulta corta","SEG_P012D - Me interrumpió"],
-    "SEG_P013": ["SEG_P013A - Áreas sucias","SEG_P013B - Baños descuidados","SEG_P013C - Equipo sucio","SEG_P013D - Mal olor"],
-    "SEG_P014": ["SEG_P014A - No explicaron","SEG_P014B - Muy técnico","SEG_P014C - Explicación rápida","SEG_P014D - Quedé confuso"],
-    "SEG_P015": ["SEG_P015A - Explicación confusa","SEG_P015B - Muy rápido","SEG_P015C - Faltó información","SEG_P015D - No explicaron"],
+    "CAP_P007": ["CAP_P007A - No mencionaron otros servicios","CAP_P007B - Información poco clara","CAP_P007C - Personal no conocía los servicios","CAP_P007D - No indagaron necesidades adicionales"],
+    "CAP_P008": ["CAP_P008A - Tardaron en responder","CAP_P008B - No resolvieron la solicitud","CAP_P008C - Muchas transferencias","CAP_P008D - Contestaron sin interés"],
+    "CAP_P009": ["CAP_P009A - Precios altos","CAP_P009B - Sin disponibilidad","CAP_P009C - Sin alternativas","CAP_P009D - Atención poco amable"],
+
+    "SEG_P010": ["SEG_P010A - Dudas sobre conocimientos","SEG_P010B - Actitud apresurada","SEG_P010C - Trato impersonal","SEG_P010D - Falta de empatía"],
+    "SEG_P011": ["SEG_P011A - Examen superficial","SEG_P011B - Muy rápido","SEG_P011C - Incompleto","SEG_P011D - No evaluaron"],
+    "SEG_P012": ["SEG_P012A - No resolvió dudas","SEG_P012B - Lenguaje técnico","SEG_P012C - Interrumpió","SEG_P012D - No hubo tiempo"],
+    "SEG_P013": ["SEG_P013A - Baños sucios","SEG_P013B - Sala de espera sucia","SEG_P013C - Desechos mal gestionados","SEG_P013D - Equipos sin desinfección"],
+    "SEG_P014": ["SEG_P014A - No explicó riesgos/beneficios","SEG_P014B - No explicó los pasos","SEG_P014C - No confirmó comprensión","SEG_P014D - Falta material informativo"],
+    "SEG_P015": ["SEG_P015A - No explicó dosis/horario","SEG_P015B - No explicó efectos secundarios","SEG_P015C - No dio indicaciones escritas","SEG_P015D - Falta seguimiento"],
+
     "EMP_P016": ["EMP_P016A - Trato brusco","EMP_P016B - Sin paciencia","EMP_P016C - Personal grosero","EMP_P016D - Me ignoraron"],
     "EMP_P017": ["EMP_P017A - Parecía desinteresado","EMP_P017B - Muy automático","EMP_P017C - No escuchó","EMP_P017D - Falta empatía"],
     "EMP_P018": ["EMP_P018A - Muy generales","EMP_P018B - No dieron","EMP_P018C - Poco útiles","EMP_P018D - No personalizados"],
+
     "TAN_P019": ["TAN_P019A - Sin rampas","TAN_P019B - Espacios estrechos","TAN_P019C - Barreras físicas","TAN_P019D - Diseño inadecuado"],
     "TAN_P020": ["TAN_P020A - Sin recordatorios","TAN_P020B - Información confusa","TAN_P020C - Llegó tarde","TAN_P020D - No recibí"],
     "TAN_P021": ["TAN_P021A - Mucha espera","TAN_P021B - Sistema lento","TAN_P021C - Falta personal","TAN_P021D - Desorganización"],
+
     "EXP_P022": ["EXP_P022A - No informaron","EXP_P022B - Servicios limitados","EXP_P022C - Personal desconocía","EXP_P022D - No preguntaron"],
     "EXP_P023": ["EXP_P023A - No informaron","EXP_P023B - Sin asesoría virtual","EXP_P023C - Solo presencial","EXP_P023D - Falta tecnología médica"],
     "EXP_P024": ["EXP_P024A - Sin programas","EXP_P024B - Servicios separados","EXP_P024C - No disponible","EXP_P024D - Falta integración"],
     "EXP_P025": ["EXP_P025A - No tienen redes","EXP_P025B - Difícil de encontrar","EXP_P025C - Información incompleta","EXP_P025D - Información desactualizada"],
     "EXP_P026": ["EXP_P026A - Muy caro","EXP_P026B - No vale","EXP_P026C - Precio elevado","EXP_P026D - Servicio regular"],
-    "EXP_P027": ["EXP_P027A - Mejor otros","EXP_P027B - No siempre","EXP_P027C - Baja oferta","EXP_P027D - Poca confianza"],
-    "EXP_P028": ["EXP_P028A - Mala experiencia","EXP_P028B - Mejor otras","EXP_P028C - No recomendaría","EXP_P028D - Problemas generales"],
+    "EXP_P027": ["EXP_P027A - Prefiere otros proveedores","EXP_P027B - No siempre","EXP_P027C - Baja oferta","EXP_P027D - Poca confianza"],
+    "EXP_P028": ["EXP_P028A - Mala experiencia","EXP_P028B - Prefiere otras clínicas","EXP_P028C - No recomendaría","EXP_P028D - Problemas generales"],
 }
 
-ALL_SUBP_OPTIONS = sorted({opt for lst in SUBPROBLEMAS.values() for opt in lst})
-# ---------- ESTADO INICIAL ----------
+# --------- Estado inicial ---------
 DEFAULT_COLS = [
     "Código","Dimensión","Pregunta evaluada","Subproblema identificado","Causa raíz",
     "Acción correctiva","Fecha seguimiento","Responsable","Plazo","Estado","% Avance","Sucursal"
@@ -187,7 +181,7 @@ DEFAULT_COLS = [
 if "df" not in st.session_state:
     st.session_state.df = pd.DataFrame(columns=DEFAULT_COLS)
 
-# ---------- TYPE COERCION ----------
+# --------- Utilidades ---------
 def _coerce_types(df: pd.DataFrame) -> pd.DataFrame:
     if "Fecha seguimiento" in df.columns:
         df["Fecha seguimiento"] = pd.to_datetime(df["Fecha seguimiento"], errors="coerce").dt.date
@@ -199,13 +193,13 @@ def _coerce_types(df: pd.DataFrame) -> pd.DataFrame:
             df[c] = df[c].astype(object)
     return df
 
-# Aplica overrides de filtros antes de crear widgets
+# Aplicar overrides antes de crear widgets
 ov = st.session_state.pop("_override_filters", None)
 if ov:
-    for k,v in ov.items():
+    for k, v in ov.items():
         st.session_state[k] = v
 
-# ---------- HEADER ----------
+# --------- Encabezado ---------
 st.markdown("<span class='big-title'>PLAN DE ACCIÓN • MATRIZ DE SEGUIMIENTO</span>", unsafe_allow_html=True)
 st.write(
     f"<span class='pill'>Total preguntas: 28</span>"
@@ -215,36 +209,29 @@ st.write(
 )
 st.divider()
 
-# ============== 1) FILTROS DE VISUALIZACIÓN ==============
+# =================== Filtros de visualización ===================
 st.markdown("<div class='section-title'>Filtros de visualización</div>", unsafe_allow_html=True)
 fc1, fc2, fc3, fc4 = st.columns([1.2, 1.2, 1.2, 1.2])
-opts_dim = ["Todas"]+CAT_DIM
-dim_val = st.session_state.get("f_dim", "Todas")
-dim_idx = opts_dim.index(dim_val) if dim_val in opts_dim else 0
+
 with fc1:
-    f_dim = st.selectbox("Dimensión", opts_dim, index=dim_idx, key="f_dim")
-opts_resp = ["Todos"]+CAT_RESPONSABLES
-resp_val = st.session_state.get("f_resp", "Todos")
-resp_idx = opts_resp.index(resp_val) if resp_val in opts_resp else 0
+    f_dim = st.selectbox("Dimensión", ["Todas"] + CAT_DIM, index=(["Todas"] + CAT_DIM).index(st.session_state.get("f_dim","Todas")), key="f_dim")
 with fc2:
-    f_resp = st.selectbox("Responsable", opts_resp, index=resp_idx, key="f_resp")
-opts_est = ["Todos"]+CAT_ESTADO
-est_val = st.session_state.get("f_estado", "Todos")
-est_idx = opts_est.index(est_val) if est_val in opts_est else 0
+    f_resp = st.selectbox("Responsable", ["Todos"] + CAT_RESPONSABLES, index=(["Todos"] + CAT_RESPONSABLES).index(st.session_state.get("f_resp","Todos")), key="f_resp")
 with fc3:
-    f_estado = st.selectbox("Estado", opts_est, index=est_idx, key="f_estado")
+    f_estado = st.selectbox("Estado", ["Todos"] + CAT_ESTADO, index=(["Todos"] + CAT_ESTADO).index(st.session_state.get("f_estado","Todos")), key="f_estado")
 with fc4:
     f_suc = st.multiselect("Sucursal", SUCURSALES, default=st.session_state.get("f_suc", []), key="f_suc")
 
 st.divider()
 
-# ============== 2) AGREGAR FILAS POR DIMENSIÓN ==============
+# =================== Agregar filas por dimensión ===================
 st.markdown("<div class='section-title'>Agregar filas por dimensión</div>", unsafe_allow_html=True)
 ac1, ac2, ac3, ac4, ac5 = st.columns([1.2, 1.2, 1.2, 1.2, 1.2])
+
 with ac1:
-    dim_to_add = st.selectbox("Dimensión a cargar", CAT_DIM, index=0, key="dim_to_add")
+    dim_to_add = st.selectbox("Dimensión a cargar", CAT_DIM, index=CAT_DIM.index(st.session_state.get("dim_to_add", CAT_DIM[0])), key="dim_to_add")
 with ac2:
-    resp_to_add = st.selectbox("Responsable (asignar)", [""]+CAT_RESPONSABLES, index=0, key="resp_to_add")
+    resp_to_add = st.selectbox("Responsable (asignar)", [""] + CAT_RESPONSABLES, index=0, key="resp_to_add")
 with ac3:
     estado_to_add = st.selectbox("Estado (asignar)", CAT_ESTADO, index=0, key="estado_to_add")
 with ac4:
@@ -252,14 +239,9 @@ with ac4:
 with ac5:
     suc_to_add = st.selectbox("Sucursal (asignar)", SUCURSALES, index=0, key="suc_to_add")
 
-pregs_dim = [ (c,t) for c,t in PREGUNTAS if MAP_DIM[c] == dim_to_add ]
-labels_dim = [ f"{c} – {t}" for c,t in pregs_dim ]
-
+labels_dim = [f"{c} – {t}" for c, t in PREGUNTAS if MAP_DIM[c] == dim_to_add]
 sel_all = st.checkbox("Seleccionar TODAS las preguntas de esta dimensión", value=True)
-if not sel_all:
-    sel_labels = st.multiselect("Seleccionar preguntas específicas", labels_dim, default=labels_dim)
-else:
-    sel_labels = labels_dim
+sel_labels = labels_dim if sel_all else st.multiselect("Seleccionar preguntas específicas", labels_dim, default=labels_dim)
 
 if st.button("➕ Agregar por dimensión", type="primary"):
     new_rows = []
@@ -268,13 +250,13 @@ if st.button("➕ Agregar por dimensión", type="primary"):
         new_rows.append({
             "Código": codigo,
             "Dimensión": MAP_DIM[codigo],
-            "Pregunta evaluada": opt,  # texto completo
+            "Pregunta evaluada": opt,         # código + texto completo
             "Subproblema identificado": "",
             "Causa raíz": "",
             "Acción correctiva": "",
             "Fecha seguimiento": date.today(),
             "Responsable": resp_to_add,
-            "Plazo": "",  # en blanco por defecto
+            "Plazo": "",                      # vacío por defecto
             "Estado": estado_to_add,
             "% Avance": avance_to_add,
             "Sucursal": suc_to_add,
@@ -282,79 +264,77 @@ if st.button("➕ Agregar por dimensión", type="primary"):
     if new_rows:
         st.session_state.df = pd.concat([st.session_state.df, pd.DataFrame(new_rows)], ignore_index=True)
         st.session_state.df = _coerce_types(st.session_state.df)
-        st.session_state["_override_filters"] = {
-            "f_dim": dim_to_add,
-            "f_resp": (resp_to_add if resp_to_add else "Todos"),
-            "f_estado": estado_to_add,
-            "f_suc": [suc_to_add],
-        }
+        st.session_state["_override_filters"] = {"f_dim": dim_to_add,
+                                                 "f_resp": (resp_to_add if resp_to_add else "Todos"),
+                                                 "f_estado": estado_to_add,
+                                                 "f_suc": [suc_to_add]}
         st.success(f"Agregadas {len(new_rows)} filas de {dim_to_add}.")
         st.rerun()
 
 st.divider()
 
-# ============== 3) MATRIZ (EDITABLE) ==============
+# =================== Matriz (editable) ===================
 st.session_state.df = _coerce_types(st.session_state.df)
 df_view = st.session_state.df.copy()
-if f_dim != "Todas":
-    df_view = df_view[df_view["Dimensión"] == f_dim]
-if f_resp != "Todos":
-    df_view = df_view[df_view["Responsable"] == f_resp]
-if f_estado != "Todos":
-    df_view = df_view[df_view["Estado"] == f_estado]
-if f_suc:
-    df_view = df_view[df_view["Sucursal"].isin(f_suc)]
+if st.session_state.get("f_dim") not in (None, "Todas"):
+    df_view = df_view[df_view["Dimensión"] == st.session_state["f_dim"]]
+if st.session_state.get("f_resp") not in (None, "Todos"):
+    df_view = df_view[df_view["Responsable"] == st.session_state["f_resp"]]
+if st.session_state.get("f_estado") not in (None, "Todos"):
+    df_view = df_view[df_view["Estado"] == st.session_state["f_estado"]]
+if st.session_state.get("f_suc"):
+    df_view = df_view[df_view["Sucursal"].isin(st.session_state["f_suc"])]
 
 if len(st.session_state.df) and df_view.empty:
     st.info("No hay filas que coincidan con los filtros activos. Revisa Responsable/Estado/Sucursal.")
 
-
 st.write("### 🧾 Matriz (editable)")
 
-# --- Vista con AG Grid (dropdown por fila) ---
 if _AGGRID_OK:
+    # ---- AG Grid con opciones por fila (Subproblema identificado) ----
     df_ag = df_view.copy().reset_index().rename(columns={"index": "___idx"})
-    # construir opciones por fila
-    df_ag["subOptions"] = df_ag["Código"].apply(lambda c: ([""] + SUBPROBLEMAS.get(c, [])))
-    # render como string para fecha
+    df_ag["subOptions"] = df_ag["Código"].apply(lambda c: [""] + SUBPROBLEMAS.get(c, []))
     if "Fecha seguimiento" in df_ag.columns:
         df_ag["Fecha seguimiento"] = pd.to_datetime(df_ag["Fecha seguimiento"], errors="coerce").dt.strftime("%Y-%m-%d")
 
     gob = GridOptionsBuilder.from_dataframe(df_ag, editable=True)
-    # Hacer columnas editables con selectores
-    gob.configure_column("Código", editable=False)
-    gob.configure_column("Dimensión", editable=False)
-    gob.configure_column("Pregunta evaluada", editable=False, wrapText=True, autoHeight=True)
-    gob.configure_column("Subproblema identificado", editable=True, cellEditor="agSelectCellEditor",
-                         cellEditorParams={"values": JsCode("function(params){return params.data.subOptions || []; }")})
+    gob.configure_column("Código", editable=False, width=120)
+    gob.configure_column("Dimensión", editable=False, width=160)
+    gob.configure_column("Pregunta evaluada", editable=False, wrapText=True, autoHeight=True, width=700)
+    gob.configure_column(
+        "Subproblema identificado",
+        editable=True,
+        cellEditor="agSelectCellEditor",
+        cellEditorParams={"values": JsCode("function(params){return params.data.subOptions || []; }")},
+        width=320
+    )
+    gob.configure_column("Causa raíz", editable=True, width=220)
+    gob.configure_column("Acción correctiva", editable=True, width=220)
+    gob.configure_column("Fecha seguimiento", editable=True, cellEditor="agDateStringCellEditor", width=140)
     gob.configure_column("Responsable", editable=True, cellEditor="agSelectCellEditor",
-                         cellEditorParams={"values": [""] + CAT_RESPONSABLES})
+                         cellEditorParams={"values": [""] + CAT_RESPONSABLES}, width=260)
+    gob.configure_column("Plazo", editable=True, headerTooltip=f"Formato sugerido: {CAT_PLAZO_SUG}", width=150)
     gob.configure_column("Estado", editable=True, cellEditor="agSelectCellEditor",
-                         cellEditorParams={"values": CAT_ESTADO})
+                         cellEditorParams={"values": CAT_ESTADO}, width=140)
     gob.configure_column("Sucursal", editable=True, cellEditor="agSelectCellEditor",
-                         cellEditorParams={"values": SUCURSALES})
-    gob.configure_column("% Avance", type=["numericColumn"], editable=True)
-    gob.configure_column("Fecha seguimiento", editable=True)
-    gob.configure_column("Plazo", editable=True)
+                         cellEditorParams={"values": SUCURSALES}, width=200)
+    gob.configure_column("% Avance", type=["numericColumn"], editable=True, width=120)
     gob.configure_column("___idx", hide=True)
 
     grid = AgGrid(
         df_ag,
         gridOptions=gob.build(),
         update_mode=GridUpdateMode.VALUE_CHANGED,
-        fit_columns_on_grid_load=True,
         allow_unsafe_jscode=True,
-        height=420,
+        fit_columns_on_grid_load=False,
+        height=460,
         theme="alpine"
     )
     updated = grid["data"]
-    # actualizar DF global con índices mapeados
     if updated is not None and len(updated):
         upd = updated.copy()
-        # parse fecha
         if "Fecha seguimiento" in upd.columns:
             upd["Fecha seguimiento"] = pd.to_datetime(upd["Fecha seguimiento"], errors="coerce").dt.date
-        # push cambios a df global
         for _, row in upd.iterrows():
             gi = int(row["___idx"])
             for col in DEFAULT_COLS:
@@ -362,17 +342,17 @@ if _AGGRID_OK:
                     st.session_state.df.at[gi, col] = row.get(col, st.session_state.df.at[gi, col])
         st.session_state.df = _coerce_types(st.session_state.df)
 else:
-    # --- Fallback: data_editor (lista global) ---
+    # ---- Fallback a data_editor (lista global) ----
     edited = st.data_editor(
         df_view,
         num_rows="dynamic",
         use_container_width=True,
         column_config={
-            "Código": st.column_config.SelectboxColumn(options=[c for c,_ in PREGUNTAS], help="Código de la pregunta"),
+            "Código": st.column_config.SelectboxColumn(options=[c for c, _ in PREGUNTAS]),
             "Dimensión": st.column_config.SelectboxColumn(options=CAT_DIM),
-            "Pregunta evaluada": st.column_config.SelectboxColumn(options=[f"{c} – {t}" for c,t in PREGUNTAS], width="large", help="Se muestra el texto completo"),
-            "Subproblema identificado": st.column_config.SelectboxColumn(options=[""]+ALL_SUBP_OPTIONS, help="Elige un subproblema (lista global). Usa el asistente para ver solo los de este código."),
-            "Responsable": st.column_config.SelectboxColumn(options=[""]+CAT_RESPONSABLES),
+            "Pregunta evaluada": st.column_config.SelectboxColumn(options=[f"{c} – {t}" for c, t in PREGUNTAS], width="large"),
+            "Subproblema identificado": st.column_config.SelectboxColumn(options=[""] + sorted({opt for lst in SUBPROBLEMAS.values() for opt in lst})),
+            "Responsable": st.column_config.SelectboxColumn(options=[""] + CAT_RESPONSABLES),
             "Plazo": st.column_config.TextColumn(help=f"Formato sugerido: {CAT_PLAZO_SUG}"),
             "Estado": st.column_config.SelectboxColumn(options=CAT_ESTADO),
             "Sucursal": st.column_config.SelectboxColumn(options=SUCURSALES),
@@ -385,23 +365,7 @@ else:
         idx_global = st.session_state.df.index[df_view.index]
         st.session_state.df.loc[idx_global, :] = edited.values
 
-# ----- Asistente para asignar subproblema por fila -----
-with st.expander("🎯 Asignar subproblema sugerido por código"):
-    if st.session_state.df.empty:
-        st.info("No hay filas en la matriz.")
-    else:
-        idx = st.selectbox("Elige la fila", options=list(st.session_state.df.index))
-        cod_actual = st.session_state.df.loc[idx, "Código"] if "Código" in st.session_state.df.columns else None
-        if not cod_actual or cod_actual not in SUBPROBLEMAS:
-            st.warning("La fila seleccionada no tiene un código con catálogo disponible (puedes escribir texto libre).")
-        else:
-            opt = st.selectbox("Opciones sugeridas", SUBPROBLEMAS[cod_actual])
-            if st.button("Aplicar a la fila seleccionada"):
-                st.session_state.df.loc[idx, "Subproblema identificado"] = opt
-                st.success("Subproblema asignado.")
-                st.rerun()
-
-# ---------- EXPORTAR ----------
+# --------- Exportar a Excel ---------
 def to_excel_bytes(df: pd.DataFrame) -> bytes:
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
@@ -409,12 +373,6 @@ def to_excel_bytes(df: pd.DataFrame) -> bytes:
     return buffer.getvalue()
 
 st.download_button(
-    "⬇️ Exportar a Excel",
-    data=to_excel_bytes(st.session_state.df),
-    file_name="matriz_servqual_aprofam.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-)
-
     "⬇️ Exportar a Excel",
     data=to_excel_bytes(st.session_state.df),
     file_name="matriz_servqual_aprofam.xlsx",
