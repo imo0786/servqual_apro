@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Matriz de Seguimiento SERVQUAL - APROFAM</title>
+<style>
+  :root{
+    --azul:#1160C7; /* #1160C7 azul */
+    --amarillo:#FFC600; /* #FFC600 amarillo webo */
+    --azul-oscuro:#00315E; /* #00315E azul fuerte */
+    --fondo:#f7f8fb;
+    --card:#ffffff;
+    --borde:#e5e7eb;
+    --texto:#1f2937;
+    --muted:#6b7280;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Inter,Segoe UI,Roboto,Arial,sans-serif;background:var(--fondo);color:var(--texto)}
+  header{background:linear-gradient(120deg,var(--azul-oscuro),var(--azul));color:#fff;padding:28px 20px}
+  header .titulo{display:flex;align-items:center;gap:16px;max-width:1200px;margin:0 auto}
+  header h1{margin:0;font-size:28px;letter-spacing:.5px}
+  header .badge{background:var(--amarillo);color:#111827;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:700}
+
+  .wrap{max-width:1200px;margin:-24px auto 40px;padding:0 16px}
+  .card{background:var(--card);border:1px solid var(--borde);border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.04)}
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap}
+  .small{font-size:12px;color:var(--muted)}
+  .table{width:100%;border-collapse:separate;border-spacing:0}
+  .table thead th{position:sticky;top:0;background:#f3f6fb;border-bottom:1px solid var(--borde);padding:10px 8px;font-size:12px;color:#374151;text-align:left}
+  .table tbody td{border-bottom:1px solid var(--borde);padding:8px;vertical-align:top}
+  input,select{width:100%;padding:6px;border:1px solid var(--borde);border-radius:6px}
+  button{padding:6px 12px;border:none;border-radius:6px;background:var(--azul);color:#fff;cursor:pointer}
+  button:hover{background:var(--azul-oscuro)}
+  .chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:#eef2ff;color:#111827;font-size:12px;font-weight:600}
+</style>
+</head>
+<body>
+  <header>
+    <div class="titulo">
+      <div style="width:38px;height:38px;border-radius:10px;background:var(--amarillo);display:grid;place-items:center;color:#111;font-weight:900">SQ</div>
+      <div>
+        <h1>PLAN DE ACCIÓN – SERVQUAL (APROFAM)</h1>
+        <div class="small">Matriz de seguimiento para preguntas con punteo ≤ 3</div>
+      </div>
+      <span class="badge">v1.3</span>
+    </div>
+  </header>
+
+  <!-- LOGIN (renombrado a loginBox para evitar colisión con window.login) -->
+  <div id="loginBox" class="card" style="max-width:420px;margin:80px auto;padding:28px">
+    <h2 style="margin:0 0 12px">Ingreso</h2>
+    <div style="display:grid;gap:10px">
+      <label>Usuario
+        <input id="u" placeholder="Usuario" />
+      </label>
+      <label>Contraseña
+        <input id="p" type="password" placeholder="••••••••" />
+      </label>
+      <div class="toolbar">
+        <!-- FIX: se usa login() (no doLogin) y se evita colisión con id -->
+        <button class="btn-primary" onclick="login()">Entrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- APP -->
+  <div id="app" style="display:none">
+    <div class="wrap">
+      <div class="card">
+        <div class="toolbar" style="padding:14px;align-items:flex-end">
+          <div>
+            <label class="small">Filtrar dimensión</label>
+            <select id="f_dimension" onchange="render()">
+              <option value="">Todas</option>
+              <option>Fiabilidad</option><option>Capacidad de Respuesta</option><option>Seguridad</option><option>Empatía</option><option>Aspectos Tangibles</option><option>Experiencia y Expansión</option>
+            </select>
+          </div>
+          <div>
+            <label class="small">Filtrar responsable</label>
+            <select id="f_resp" onchange="render()"><option value="">Todos</option></select>
+          </div>
+          <div style="margin-left:auto">
+            <button class="btn-primary" onclick="openEditor()">➕ Nueva fila</button>
+            <button onclick="exportCSV()">⬇️ Exportar CSV</button>
+          </div>
+        </div>
+        <div style="overflow:auto;max-height:70vh">
+          <table class="table" id="tbl">
+            <thead>
+              <tr>
+                <th>#</th><th>Dimensión</th><th>Código</th><th>Pregunta evaluada</th><th>Sub-problema</th><th>Causa raíz</th><th>Acción Correctiva</th><th>Fecha seguimiento</th><th>Responsable</th><th>Plazo</th><th>Estado</th><th>% avance</th><th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL EDITOR -->
+  <div id="modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:50">
+    <div class="card" style="max-width:900px;margin:6vh auto;padding:18px;border-top:6px solid var(--azul)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <div class="chip" id="ed-codigo">—</div>
+        <div style="font-weight:800">Editar fila</div>
+        <button style="margin-left:auto" onclick="closeEditor()">✖</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1.2fr 2fr;gap:12px">
+        <label>Dimensión
+          <select id="i_dimension"></select>
+        </label>
+        <label>Pregunta
+          <select id="i_codigo"></select>
+        </label>
+        <label>Sub-problema
+          <input id="i_sub" />
+        </label>
+        <label>Causa raíz
+          <input id="i_causa" />
+        </label>
+        <label>Acción Correctiva
+          <input id="i_accion" />
+        </label>
+        <label>Fecha seguimiento
+          <input id="i_fecha" type="date" />
+        </label>
+        <label>Responsable
+          <select id="i_resp"></select>
+        </label>
+        <label>Plazo
+          <input id="i_plazo" placeholder="15 días / 2025-06-30" />
+        </label>
+        <label>Estado
+          <select id="i_estado">
+            <option>Pendiente</option>
+            <option>En progreso</option>
+            <option>Completado</option>
+            <option>Bloqueado</option>
+          </select>
+        </label>
+        <label>% Avance
+          <input id="i_avance" type="number" min="0" max="100" />
+        </label>
+      </div>
+      <div class="toolbar" style="margin-top:14px">
+        <button class="btn-primary" onclick="saveRow()">💾 Guardar</button>
+        <button onclick="delRow()">🗑️ Eliminar</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+// === Pequeños tests (no intrusivos) ===
+function loginCheck(user, pass){
+  return user==='admin' && pass==='Aprof@n2025';
+}
+(function selfTests(){
+  const tests = [
+    ['loginCheck rechaza credenciales inválidas', loginCheck('x','y')===false],
+    ['loginCheck acepta credenciales correctas', loginCheck('admin','Aprof@n2025')===true]
+  ];
+  console.log('SERVQUAL tests →', tests.map(t=>`${t[0]}: ${t[1]?'OK':'FAIL'}`).join(' | '));
+})();
+
+// === Catálogo de responsables (según imagen) ===
+const CATALOGO_RESP = [
+  "BRYSEYDA ADELINA ZUÑIGA GOMEZ",
+  "DANIEL ALEJANDRO MONTENEGRO MORALES",
+  "DARWIN RENE RODAS CHEGUEN",
+  "EDWIN HAROLDO MAYEN ALVARADO",
+  "EVELYN ROCIO RUIZ BARRIENTOS",
+  "EYBI VINICIO BEDOYA AVILA",
+  "HECTOR LEONARDO MEJIA SANCHEZ",
+  "IVAN ALBERTO MOLINA ALVAREZ",
+  "JENNIFER ANDREA JACOBO GALVEZ",
+  "MARIO FERNANDO HERNANDEZ PINEDA",
+  "MARITZA ELIZABETH CHANG GODINEZ DE VALLE",
+  "MIRIAM YESENIA PAREDES QUINTEROS"
+];
+
+const preguntas = [
+  {codigo:"FIA_P001",dimension:"Fiabilidad",texto:"¿El personal de recepción le explicó de forma clara y sencilla todos los pasos que debía seguir para su consulta?"},
+  {codigo:"FIA_P002",dimension:"Fiabilidad",texto:"¿La atención en caja o el pago de sus servicios fue rápida?"},
+  {codigo:"FIA_P003",dimension:"Fiabilidad",texto:"¿Respetaron el orden de llegada y su turno para atenderle?"},
+  {codigo:"FIA_P004",dimension:"Fiabilidad",texto:"¿El doctor le explicó de manera clara y detallada su diagnóstico?"},
+  {codigo:"FIA_P005",dimension:"Fiabilidad",texto:"¿Fue fácil obtener su cita?"},
+  {codigo:"CAP_P006",dimension:"Capacidad de Respuesta",texto:"¿Recibió atención rápidamente después de llegar al hospital/clínica?"},
+  {codigo:"CAP_P007",dimension:"Capacidad de Respuesta",texto:"¿El personal le informó sobre otros servicios o programas de APROFAM que podrían complementar su cuidado de salud?"},
+  {codigo:"CAP_P008",dimension:"Capacidad de Respuesta",texto:"¿El personal del call center atendió su llamada con rapidez y resolvió su solicitud?"},
+  {codigo:"CAP_P009",dimension:"Capacidad de Respuesta",texto:"¿Su experiencia en la farmacia fue la que esperaba?"},
+  {codigo:"SEG_P010",dimension:"Seguridad",texto:"¿El médico y la enfermera le inspiraron confianza en la atención?"},
+  {codigo:"SEG_P011",dimension:"Seguridad",texto:"¿El médico le examinó físicamente de forma completa según su problema de salud?"},
+  {codigo:"SEG_P012",dimension:"Seguridad",texto:"¿El doctor le respondió todas sus preguntas?"},
+  {codigo:"SEG_P013",dimension:"Seguridad",texto:"¿Encontró el hospital/clínica limpia y en buenas condiciones?"},
+  {codigo:"SEG_P014",dimension:"Seguridad",texto:"¿Le explicaron de forma clara todos los procedimientos o exámenes que se debe realizar?"},
+  {codigo:"SEG_P015",dimension:"Seguridad",texto:"¿Le explicaron claramente cómo tomar sus medicamentos y qué cuidados debe tener en casa?"},
+  {codigo:"EMP_P016",dimension:"Empatía",texto:"¿Todo el personal le trató con amabilidad, respeto y paciencia durante su visita?"},
+  {codigo:"EMP_P017",dimension:"Empatía",texto:"¿Sintió que el doctor realmente se interesó por resolver su problema de salud?"},
+  {codigo:"EMP_P018",dimension:"Empatía",texto:"¿Le dieron consejos sobre cómo mejorar su salud y prevenir complicaciones?"},
+  {codigo:"TAN_P019",dimension:"Aspectos Tangibles",texto:"¿Las instalaciones del hospital son cómodas y accesibles para personas con discapacidad?"},
+  {codigo:"TAN_P020",dimension:"Aspectos Tangibles",texto:"¿Recibió recordatorios sobre su cita o promoción de servicios?"},
+  {codigo:"TAN_P021",dimension:"Aspectos Tangibles",texto:"¿El tiempo que esperó en laboratorio, farmacia y otros servicios fue razonable?"},
+  {codigo:"EXP_P022",dimension:"Experiencia y Expansión",texto:"¿Le informaron sobre otros servicios disponibles como vacunación, salud mental o nutrición?"},
+  {codigo:"EXP_P023",dimension:"Experiencia y Expansión",texto:"¿Le informaron sobre opciones de asesoría virtual o telemedicina?"},
+  {codigo:"EXP_P024",dimension:"Experiencia y Expansión",texto:"¿Considera que APROFAM ofrece los servicios para atender a su familia?"},
+  {codigo:"EXP_P025",dimension:"Experiencia y Expansión",texto:"¿Le fue fácil ubicar información de APROFAM en redes sociales o su expansión?"},
+  {codigo:"EXP_P026",dimension:"Experiencia y Expansión",texto:"¿Le pareció justo el precio por el servicio que recibió?"},
+  {codigo:"EXP_P027",dimension:"Experiencia y Expansión",texto:"¿Nos considera como su primera opción en servicios de laboratorio, farmacia e imágenes?"},
+  {codigo:"EXP_P028",dimension:"Experiencia y Expansión",texto:"¿Recomendaría este hospital/Clínica a sus familiares y amigos por la buena atención que recibió?"}
+];
+
+// Datos
+let data = JSON.parse(localStorage.getItem('sq_matriz')||'null');
+if(!data){
+  // una fila por pregunta (editable)
+  data = preguntas.map(p=>({codigo:p.codigo,dimension:p.dimension,pregunta:p.texto,sub:"",causa:"",accion:"",fecha:"",resp:"",plazo:"",estado:"Pendiente",avance:0}));
+}
+let editIndex = null;
+
+function login(){
+  // FIX: ya no existe un elemento con id "login" que colisione con esta función
+  const user = document.getElementById('u').value;
+  const pass = document.getElementById('p').value;
+  if(loginCheck(user, pass)){
+    document.getElementById('loginBox').style.display='none';
+    document.getElementById('app').style.display='block';
+    cargarCatalogos();
+    render();
+  }else{alert('Credenciales incorrectas');}
+}
+
+function cargarCatalogos(){
+  // Filtro responsable
+  const fr=document.getElementById('f_resp');
+  fr.innerHTML='<option value="">Todos</option>'+CATALOGO_RESP.map(n=>`<option>${n}</option>`).join('');
+  // Modal selects
+  const sd=[...new Set(preguntas.map(p=>p.dimension))];
+  document.getElementById('i_dimension').innerHTML = sd.map(d=>`<option>${d}</option>`).join('');
+  document.getElementById('i_codigo').innerHTML = preguntas.map(p=>`<option value="${p.codigo}">${p.codigo} — ${p.texto.substring(0,80)}...</option>`).join('');
+  document.getElementById('i_resp').innerHTML = '<option value="">—</option>'+CATALOGO_RESP.map(n=>`<option>${n}</option>`).join('');
+}
+
+function openEditor(idx){
+  editIndex = (typeof idx==='number')? idx : null;
+  const row = editIndex!=null ? data[editIndex] : {codigo:preguntas[0].codigo,dimension:preguntas[0].dimension,pregunta:preguntas[0].texto,sub:'',causa:'',accion:'',fecha:'',resp:'',plazo:'',estado:'Pendiente',avance:0};
+  // set campos
+  document.getElementById('modal').style.display='block';
+  document.getElementById('ed-codigo').textContent = row.codigo;
+  document.getElementById('i_dimension').value = row.dimension;
+  document.getElementById('i_codigo').value = row.codigo;
+  document.getElementById('i_sub').value = row.sub||'';
+  document.getElementById('i_causa').value = row.causa||'';
+  document.getElementById('i_accion').value = row.accion||'';
+  document.getElementById('i_fecha').value = row.fecha||'';
+  document.getElementById('i_resp').value = row.resp||'';
+  document.getElementById('i_plazo').value = row.plazo||'';
+  document.getElementById('i_estado').value = row.estado||'Pendiente';
+  document.getElementById('i_avance').value = row.avance||0;
+}
+
+function closeEditor(){document.getElementById('modal').style.display='none'}
+
+// Sincroniza pregunta-dimensión al cambiar código
+ document.getElementById('i_codigo')?.addEventListener('change', e=>{
+   const p = preguntas.find(x=>x.codigo===e.target.value);
+   if(p){ document.getElementById('i_dimension').value=p.dimension; document.getElementById('ed-codigo').textContent=p.codigo; }
+ });
+
+function saveRow(){
+  const codigo = document.getElementById('i_codigo').value;
+  const p = preguntas.find(x=>x.codigo===codigo);
+  const obj = {
+    codigo,
+    dimension: document.getElementById('i_dimension').value,
+    pregunta: p? p.texto: '',
+    sub: document.getElementById('i_sub').value,
+    causa: document.getElementById('i_causa').value,
+    accion: document.getElementById('i_accion').value,
+    fecha: document.getElementById('i_fecha').value,
+    resp: document.getElementById('i_resp').value,
+    plazo: document.getElementById('i_plazo').value,
+    estado: document.getElementById('i_estado').value,
+    avance: parseInt(document.getElementById('i_avance').value||'0',10)
+  };
+  if(editIndex!=null){ data[editIndex]=obj; }
+  else{ data.push(obj); }
+  persist();
+  closeEditor();
+  render();
+}
+
+function delRow(){
+  if(editIndex!=null){ if(confirm('¿Eliminar esta fila?')){ data.splice(editIndex,1); persist(); render(); closeEditor(); } }
+}
+
+function persist(){ localStorage.setItem('sq_matriz', JSON.stringify(data)); }
+
+function render(){
+  const dim = document.getElementById('f_dimension').value;
+  const resp = document.getElementById('f_resp').value;
+  const tbody=document.querySelector('#tbl tbody');
+  let rows = data.filter(r => (!dim || r.dimension===dim) && (!resp || r.resp===resp));
+  tbody.innerHTML = rows.map((r,i)=>`
+    <tr>
+      <td>${i+1}</td>
+      <td>${r.dimension}</td>
+      <td><b>${r.codigo}</b></td>
+      <td>${r.pregunta}</td>
+      <td>${r.sub||''}</td>
+      <td>${r.causa||''}</td>
+      <td>${r.accion||''}</td>
+      <td>${r.fecha||''}</td>
+      <td>${r.resp||''}</td>
+      <td>${r.plazo||''}</td>
+      <td><span class="chip" style="background:${r.estado==='Completado'?'#e7f7ec':'#eef2ff'}">${r.estado}</span></td>
+      <td>${(r.avance||0)}%</td>
+      <td><button onclick="openEditor(${data.indexOf(r)})">✏️</button></td>
+    </tr>`).join('');
+}
+
+function exportCSV(){
+  const headers = ['Dimension','Codigo','Pregunta','Sub-problema','Causa raiz','Accion Correctiva','Fecha seguimiento','Responsable','Plazo','Estado','Avance'];
+  const dim = document.getElementById('f_dimension').value;
+  const resp = document.getElementById('f_resp').value;
+  const rows = data.filter(r => (!dim || r.dimension===dim) && (!resp || r.resp===resp));
+  const csv = [headers.join(',')].concat(rows.map(r => [r.dimension,r.codigo,`"${r.pregunta.replaceAll('"','""')}"`,
+    `"${(r.sub||'').replaceAll('"','""')}"`,`"${(r.causa||'').replaceAll('"','""')}"`,`"${(r.accion||'').replaceAll('"','""')}"`,r.fecha,r.resp,r.plazo,r.estado,(r.avance||0)].join(','))).join('\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download='Matriz_Servqual_APROFAM.csv'; a.click();
+}
+</script>
+</body>
+</html>
