@@ -26,6 +26,15 @@ st.markdown(
     .soft>button {{ background:{YELLOW}!important; color:#1c1c1c!important; }}
     .section-title {{ font-weight:800; color:{DARK}; margin-top:6px; }}
     </style>
+
+<style>
+/* Aumentar altura y permitir salto de línea en celdas del editor */
+div[data-testid="stDataFrame"] div[role="gridcell"] { 
+    white-space: normal !important; 
+    line-height: 1.3 !important;
+}
+div[data-testid="stDataFrame"] div[role="row"] { min-height: 46px !important; }
+</style>
     """,
     unsafe_allow_html=True
 )
@@ -56,6 +65,17 @@ with st.sidebar:
             st.rerun()
 
 # ---------- CATÁLOGOS ----------
+# Subproblemas por código (catálogo ampliable)
+SUBPROBLEMAS = {
+    "FIA_P001": [
+        "FIA_P001A - Explicación confusa",
+        "FIA_P001B - Faltó información",
+        "FIA_P001C - Personal desatento",
+        "FIA_P001D - Lenguaje técnico",
+    ],
+}
+ALL_SUBP_OPTIONS = sorted({opt for lst in SUBPROBLEMAS.values() for opt in lst})
+
 CAT_RESPONSABLES = [
     "BRYSEYDA A. ZUÑIGA GOMEZ",
     "DANIEL ALEJANDRO MONTERROSO MORALES",
@@ -86,7 +106,7 @@ CAT_DIM    = ["FIABILIDAD", "CAPACIDAD DE RESPUESTA", "SEGURIDAD", "EMPATÍA", "
 
 # 28 preguntas (código + texto corto)
 PREGUNTAS = [
-    ("FIA_P001","¿Recepción explicó pasos de consulta?"),
+    ("FIA_P001","¿El personal de recepción le explicó de forma clara y sencilla todos los pasos que debía seguir para su consulta?"),
     ("FIA_P002","¿Caja/pago fue rápido?"),
     ("FIA_P003","¿Respetaron orden y turno?"),
     ("FIA_P004","¿Doctor explicó diagnóstico claramente?"),
@@ -271,8 +291,9 @@ edited = st.data_editor(
         "Código": st.column_config.SelectboxColumn(options=[c for c,_ in PREGUNTAS]),
         "Dimensión": st.column_config.SelectboxColumn(options=CAT_DIM),
         "Pregunta evaluada": st.column_config.SelectboxColumn(options=[f"{c} – {t}" for c,t in PREGUNTAS], width="large"),
+        "Subproblema identificado": st.column_config.SelectboxColumn(options=(ALL_SUBP_OPTIONS if ALL_SUBP_OPTIONS else [""]), help="Opciones dependen del código (por ahora: FIA_P001). Si no aplica, puedes escribir texto libre en la celda."),
         "Responsable": st.column_config.SelectboxColumn(options=[""]+CAT_RESPONSABLES),
-        "Plazo": st.column_config.SelectboxColumn(options=["15 días","30 días","45 días","60 días"]),
+        "Plazo": st.column_config.TextColumn(help="Campo abierto (ej. 30 días, 2025-09-15, 6 semanas)"),
         "Estado": st.column_config.SelectboxColumn(options=CAT_ESTADO),
         "Sucursal": st.column_config.SelectboxColumn(options=SUCURSALES),
         "% Avance": st.column_config.NumberColumn(format="%.0f", min_value=0, max_value=100, step=5),
