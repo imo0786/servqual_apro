@@ -1,24 +1,28 @@
 # streamlit_app.py
-# Matriz de seguimiento SERVQUAL – APROFAM
-# - Dropdown por fila para "Subproblema identificado" (AG Grid) según Código (sin autorrelleno)
-# - Validaciones OBLIGATORIAS: Subproblema identificado, Responsable, Estado, Sucursal
-# - Eliminar filas seleccionadas (checkbox)
-# - Exportación a Excel (solo si NO hay errores)
+# Matriz de seguimiento SERVQUAL – APROFAM (persistente)
+# - Subproblema por fila (AG Grid) con fix JS (sin .forEach error)
+# - Validaciones OBLIGATORIAS: Subproblema, Responsable, Estado, Sucursal
+# - Eliminar filas seleccionadas
+# - Exportar a Excel (solo si validaciones OK)
+# - Persistencia: autosave a /storage/matriz.json + backups
+# - Importar desde Excel/JSON
 # - Login: admin / Aprof@n2025
+
+import os, json
+from io import BytesIO
+from datetime import date, datetime
 
 import streamlit as st
 import pandas as pd
-from io import BytesIO
-from datetime import date
 
-# --------- AG Grid ---------
+# ----- AG Grid -----
 try:
     from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, JsCode
     _AGGRID_OK = True
 except Exception:
     _AGGRID_OK = False
 
-# --------- Branding / Estilo ---------
+# ----- Theming -----
 PRIMARY = "#1160C7"
 YELLOW  = "#FFC600"
 DARK    = "#00315E"
@@ -29,14 +33,9 @@ st.markdown(
     f"""
     <style>
       .big-title {{ font-size: 1.6rem; font-weight: 800; color:{DARK}; }}
-      .pill {{
-        display:inline-block; padding:4px 10px; border-radius:999px;
-        font-weight:600; margin-right:6px; font-size:.8rem; color:white; background:{PRIMARY};
-      }}
-      .stButton>button {{
-        background:{PRIMARY}; color:white; border:0; border-radius:10px; padding:8px 16px;
-        font-weight:700;
-      }}
+      .pill {{ display:inline-block; padding:4px 10px; border-radius:999px;
+              font-weight:600; margin-right:6px; font-size:.8rem; color:white; background:{PRIMARY}; }}
+      .stButton>button {{ background:{PRIMARY}; color:white; border:0; border-radius:10px; padding:8px 16px; font-weight:700; }}
       .danger>button {{ background:#D92D20 !important; }}
       .secondary>button {{ background:#E2E8F0 !important; color:#111 !important; }}
       .section-title {{ font-weight:800; color:{DARK}; margin-top:6px; }}
@@ -47,7 +46,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# --------- Login ---------
+# ----- Login -----
 def login(user: str, pwd: str) -> bool:
     return user.strip().lower() == "admin" and pwd == "Aprof@n2025"
 
@@ -72,7 +71,14 @@ with st.sidebar:
             st.session_state.clear()
             st.rerun()
 
-# --------- Catálogos ---------
+# ----- Storage locations -----
+DATA_DIR = os.path.join(os.getcwd(), "storage")
+DATA_FILE = os.path.join(DATA_DIR, "matriz.json")
+BACKUP_DIR = os.path.join(DATA_DIR, "backups")
+os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(BACKUP_DIR, exist_ok=True)
+
+# ----- Catalogs -----
 CAT_RESPONSABLES = [
     "BRYSEYDA A. ZUÑIGA GOMEZ",
     "DANIEL ALEJANDRO MONTERROSO MORALES",
@@ -101,7 +107,6 @@ CAT_ESTADO = ["Pendiente", "En progreso", "Completado", "Bloqueado"]
 CAT_PLAZO_SUG = "Ej.: 30 días, 45 días, 2025-09-15"
 CAT_DIM = ["FIABILIDAD", "CAPACIDAD DE RESPUESTA", "SEGURIDAD", "EMPATÍA", "ASPECTOS TANGIBLES", "EXPERIENCIA/EXPANSIÓN"]
 
-# --------- Preguntas (28) ---------
 PREGUNTAS = [
     ("FIA_P001","¿El personal de recepción le explicó de forma clara y sencilla todos los pasos que debía seguir para su consulta?"),
     ("FIA_P002","¿La atención en caja o el pago de sus servicios fue rápida?"),
@@ -132,7 +137,6 @@ PREGUNTAS = [
     ("EXP_P027","¿Nos considera como su primera opción en servicios de laboratorio, farmacia y ultrasonidos?"),
     ("EXP_P028","¿Recomendaría este hospital/clínica a sus familiares y amigos por la buena atención que recibió?"),
 ]
-
 MAP_DIM = {
     **{k:"FIABILIDAD" for k in ["FIA_P001","FIA_P002","FIA_P003","FIA_P004","FIA_P005"]},
     **{k:"CAPACIDAD DE RESPUESTA" for k in ["CAP_P006","CAP_P007","CAP_P008","CAP_P009"]},
@@ -141,8 +145,6 @@ MAP_DIM = {
     **{k:"ASPECTOS TANGIBLES" for k in ["TAN_P019","TAN_P020","TAN_P021"]},
     **{k:"EXPERIENCIA/EXPANSIÓN" for k in ["EXP_P022","EXP_P023","EXP_P024","EXP_P025","EXP_P026","EXP_P027","EXP_P028"]},
 }
-
-# --------- Subproblemas por código ---------
 SUBPROBLEMAS = {
     "FIA_P001": ["FIA_P001A - Explicación confusa","FIA_P001B - Faltó información","FIA_P001C - Personal desatento","FIA_P001D - Lenguaje técnico"],
     "FIA_P002": ["FIA_P002A - Caja muy lenta","FIA_P002B - Cola muy larga","FIA_P002C - Pocos cajeros","FIA_P002D - Sistema muy lento"],
@@ -174,27 +176,53 @@ SUBPROBLEMAS = {
     "EXP_P028": ["EXP_P028A - Mala experiencia","EXP_P028B - Prefiere otras clínicas","EXP_P028C - No recomendaría","EXP_P028D - Problemas generales"],
 }
 
-# --------- Estado inicial ---------
-DEFAULT_COLS = [
-    "Código","Dimensión","Pregunta evaluada","Subproblema identificado","Causa raíz",
-    "Acción correctiva","Fecha seguimiento","Responsable","Plazo","Estado","% Avance","Sucursal"
-]
-if "df" not in st.session_state:
-    st.session_state.df = pd.DataFrame(columns=DEFAULT_COLS)
+DEFAULT_COLS = ["Código","Dimensión","Pregunta evaluada","Subproblema identificado","Causa raíz","Acción correctiva","Fecha seguimiento","Responsable","Plazo","Estado","% Avance","Sucursal"]
 
-# --------- Utilidades ---------
 def _coerce_types(df: pd.DataFrame) -> pd.DataFrame:
     if "Fecha seguimiento" in df.columns:
         df["Fecha seguimiento"] = pd.to_datetime(df["Fecha seguimiento"], errors="coerce").dt.date
     if "% Avance" in df.columns:
         df["% Avance"] = pd.to_numeric(df["% Avance"], errors="coerce").fillna(0).astype(int)
-    for c in ["Código","Dimensión","Pregunta evaluada","Subproblema identificado","Causa raíz",
-              "Acción correctiva","Responsable","Plazo","Estado","Sucursal"]:
+    for c in DEFAULT_COLS:
         if c in df.columns:
             df[c] = df[c].astype(object)
     return df
 
-# --------- Encabezado ---------
+# ----- persistence helpers -----
+def save_df():
+    df = _coerce_types(st.session_state.df.copy())
+    df_save = df.copy()
+    if "Fecha seguimiento" in df_save.columns:
+        df_save["Fecha seguimiento"] = pd.to_datetime(df_save["Fecha seguimiento"], errors="coerce").dt.strftime("%Y-%m-%d")
+    os.makedirs(DATA_DIR, exist_ok=True)
+    df_save.to_json(DATA_FILE, orient="records", force_ascii=False)
+    # backups
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_dir = os.path.join(DATA_DIR, "backups")
+    os.makedirs(backup_dir, exist_ok=True)
+    df_save.to_json(os.path.join(backup_dir, f"matriz_{ts}.json"), orient="records", force_ascii=False)
+    try:
+        files = sorted([f for f in os.listdir(backup_dir) if f.startswith("matriz_")])
+        for f in files[:-10]:
+            os.remove(os.path.join(backup_dir, f))
+    except Exception:
+        pass
+
+def load_df() -> bool:
+    if os.path.exists(DATA_FILE):
+        try:
+            df = pd.read_json(DATA_FILE, orient="records")
+            st.session_state.df = _coerce_types(df)
+            return True
+        except Exception as e:
+            st.warning(f"No se pudo cargar almacenamiento: {e}")
+    return False
+
+if "df" not in st.session_state:
+    st.session_state.df = pd.DataFrame(columns=DEFAULT_COLS)
+    load_df()
+
+# ----- Header -----
 st.markdown("<span class='big-title'>PLAN DE ACCIÓN • MATRIZ DE SEGUIMIENTO</span>", unsafe_allow_html=True)
 st.write(
     f"<span class='pill'>Total preguntas: 28</span>"
@@ -204,37 +232,46 @@ st.write(
 )
 st.divider()
 
-# =================== Filtros de visualización ===================
+# ----- Import -----
+with st.expander("📥 Importar matriz (Excel .xlsx o JSON exportado)", expanded=False):
+    up = st.file_uploader("Elegir archivo", type=["xlsx","json"])
+    if up and st.button("Cargar archivo", type="primary"):
+        try:
+            if up.name.lower().endswith(".xlsx"):
+                df_new = pd.read_excel(up)
+            else:
+                df_new = pd.read_json(up, orient="records")
+            df_new = df_new[[c for c in DEFAULT_COLS if c in df_new.columns]]
+            for c in DEFAULT_COLS:
+                if c not in df_new.columns:
+                    df_new[c] = "" if c != "% Avance" else 0
+            st.session_state.df = _coerce_types(df_new[DEFAULT_COLS])
+            save_df()
+            st.success("Matriz cargada y guardada.")
+            st.rerun()
+        except Exception as e:
+            st.error(f"No se pudo importar: {e}")
+
+# ----- Filters -----
 st.markdown("<div class='section-title'>Filtros de visualización</div>", unsafe_allow_html=True)
 fc1, fc2, fc3, fc4 = st.columns([1.2, 1.2, 1.2, 1.2])
-
-with fc1:
-    f_dim = st.selectbox("Dimensión", ["Todas"] + CAT_DIM, index=(["Todas"] + CAT_DIM).index(st.session_state.get("f_dim","Todas")), key="f_dim")
-with fc2:
-    f_resp = st.selectbox("Responsable", ["Todos"] + CAT_RESPONSABLES, index=(["Todos"] + CAT_RESPONSABLES).index(st.session_state.get("f_resp","Todos")), key="f_resp")
-with fc3:
-    f_estado = st.selectbox("Estado", ["Todos"] + CAT_ESTADO, index=(["Todos"] + CAT_ESTADO).index(st.session_state.get("f_estado","Todos")), key="f_estado")
-with fc4:
-    f_suc = st.multiselect("Sucursal", SUCURSALES, default=st.session_state.get("f_suc", []), key="f_suc")
+with fc1: st.selectbox("Dimensión", ["Todas"] + CAT_DIM, key="f_dim")
+with fc2: st.selectbox("Responsable", ["Todos"] + CAT_RESPONSABLES, key="f_resp")
+with fc3: st.selectbox("Estado", ["Todos"] + CAT_ESTADO, key="f_estado")
+with fc4: st.multiselect("Sucursal", SUCURSALES, key="f_suc")
 
 st.divider()
 
-# =================== Agregar filas por dimensión ===================
+# ----- Add by dimension -----
 st.markdown("<div class='section-title'>Agregar filas por dimensión</div>", unsafe_allow_html=True)
 ac1, ac2, ac3, ac4, ac5 = st.columns([1.2, 1.2, 1.2, 1.2, 1.2])
+with ac1: st.selectbox("Dimensión a cargar", CAT_DIM, key="dim_to_add")
+with ac2: st.selectbox("Responsable (asignar)", [""] + CAT_RESPONSABLES, key="resp_to_add")
+with ac3: st.selectbox("Estado (asignar)", CAT_ESTADO, key="estado_to_add")
+with ac4: st.slider("% Avance (asignar)", 0, 100, 0, 5, key="avance_to_add")
+with ac5: st.selectbox("Sucursal (asignar)", SUCURSALES, key="suc_to_add")
 
-with ac1:
-    dim_to_add = st.selectbox("Dimensión a cargar", CAT_DIM, index=CAT_DIM.index(st.session_state.get("dim_to_add", CAT_DIM[0])), key="dim_to_add")
-with ac2:
-    resp_to_add = st.selectbox("Responsable (asignar)", [""] + CAT_RESPONSABLES, index=0, key="resp_to_add")
-with ac3:
-    estado_to_add = st.selectbox("Estado (asignar)", CAT_ESTADO, index=0, key="estado_to_add")
-with ac4:
-    avance_to_add = st.slider("% Avance (asignar)", 0, 100, 0, 5, key="avance_to_add")
-with ac5:
-    suc_to_add = st.selectbox("Sucursal (asignar)", SUCURSALES, index=0, key="suc_to_add")
-
-labels_dim = [f"{c} – {t}" for c, t in PREGUNTAS if MAP_DIM[c] == dim_to_add]
+labels_dim = [f"{c} – {t}" for c, t in PREGUNTAS if MAP_DIM[c] == st.session_state["dim_to_add"]]
 sel_all = st.checkbox("Seleccionar TODAS las preguntas de esta dimensión", value=True)
 sel_labels = labels_dim if sel_all else st.multiselect("Seleccionar preguntas específicas", labels_dim, default=labels_dim)
 
@@ -245,32 +282,33 @@ if st.button("➕ Agregar por dimensión", type="primary"):
         new_rows.append({
             "Código": codigo,
             "Dimensión": MAP_DIM[codigo],
-            "Pregunta evaluada": opt,         # código + texto completo
+            "Pregunta evaluada": opt,
             "Subproblema identificado": "",
             "Causa raíz": "",
             "Acción correctiva": "",
             "Fecha seguimiento": date.today(),
-            "Responsable": resp_to_add,
-            "Plazo": "",                      # puede quedar vacío
-            "Estado": estado_to_add,
-            "% Avance": avance_to_add,
-            "Sucursal": suc_to_add,
+            "Responsable": st.session_state.get("resp_to_add",""),
+            "Plazo": "",
+            "Estado": st.session_state.get("estado_to_add","Pendiente"),
+            "% Avance": st.session_state.get("avance_to_add",0),
+            "Sucursal": st.session_state.get("suc_to_add",""),
         })
     if new_rows:
         st.session_state.df = pd.concat([st.session_state.df, pd.DataFrame(new_rows)], ignore_index=True)
         st.session_state.df = _coerce_types(st.session_state.df)
-        st.success(f"Agregadas {len(new_rows)} filas de {dim_to_add}.")
+        save_df()
+        st.success(f"Agregadas {len(new_rows)} filas de {st.session_state['dim_to_add']}.")
         st.rerun()
 
 st.divider()
 
-# =================== Matriz (editable) ===================
+# ----- Editable grid -----
 st.session_state.df = _coerce_types(st.session_state.df)
 df_view = st.session_state.df.copy()
 if st.session_state.get("f_dim") not in (None, "Todas"):
     df_view = df_view[df_view["Dimensión"] == st.session_state["f_dim"]]
 if st.session_state.get("f_resp") not in (None, "Todos"):
-    df_view = df_view[df_view["Responsable"] == st.session_state.get("f_resp")]
+    df_view = df_view[df_view["Responsable"] == st.session_state["f_resp"]]
 if st.session_state.get("f_estado") not in (None, "Todos"):
     df_view = df_view[df_view["Estado"] == st.session_state["f_estado"]]
 if st.session_state.get("f_suc"):
@@ -281,28 +319,38 @@ if len(st.session_state.df) and df_view.empty:
 
 st.write("### 🧾 Matriz (editable)")
 
-selected_idxs = []  # para eliminar filas
+selected_idxs = []
 
 if _AGGRID_OK:
-    # ---- AG Grid con per-row dropdown y selección múltiple ----
-    df_ag = df_view.copy().reset_index().rename(columns={"index": "___idx"})
-    df_ag["subOptions"] = df_ag["Código"].apply(lambda c: tuple([""] + SUBPROBLEMAS.get(c, [])))  # tupla = hashable
+    df_ag = df_view.copy().reset_index().rename(columns={"index":"___idx"})
+    df_ag["subOptions"] = df_ag["Código"].apply(lambda c: tuple([""] + SUBPROBLEMAS.get(c, [])))
+    import json as _json
+    df_ag["subOptionsJs"] = df_ag["Código"].apply(lambda c: _json.dumps([""] + SUBPROBLEMAS.get(c, [])))
     if "Fecha seguimiento" in df_ag.columns:
         df_ag["Fecha seguimiento"] = pd.to_datetime(df_ag["Fecha seguimiento"], errors="coerce").dt.strftime("%Y-%m-%d")
 
     gob = GridOptionsBuilder.from_dataframe(df_ag, editable=True)
-    # Selección por checkbox (para eliminar)
     gob.configure_selection(selection_mode="multiple", use_checkbox=True)
     gob.configure_column("Código", editable=False, width=120, checkboxSelection=True, headerCheckboxSelection=True)
     gob.configure_column("Dimensión", editable=False, width=160)
     gob.configure_column("Pregunta evaluada", editable=False, wrapText=True, autoHeight=True, width=700)
+
     gob.configure_column(
         "Subproblema identificado",
         editable=True,
         cellEditor="agSelectCellEditor",
-        cellEditorParams={"values": JsCode("function(params){return params.data.subOptions || []; }")},
+        cellEditorParams={"values": JsCode("""function(p){
+            try{
+              if (p && p.data && p.data.subOptionsJs){
+                 var arr = JSON.parse(p.data.subOptionsJs);
+                 return Array.isArray(arr)? arr : [];
+              }
+              return [];
+            }catch(e){ return [];}
+        }""")},
         width=320
     )
+
     gob.configure_column("Causa raíz", editable=True, width=220)
     gob.configure_column("Acción correctiva", editable=True, width=220)
     gob.configure_column("Fecha seguimiento", editable=True, cellEditor="agDateStringCellEditor", width=140)
@@ -317,23 +365,36 @@ if _AGGRID_OK:
 
     gob.configure_column("___idx", hide=True)
     gob.configure_column("subOptions", hide=True)
+    gob.configure_column("subOptionsJs", hide=True)
+
+    row_rules = {
+        "missingRow": JsCode("""function(p){
+            var ok1 = (p.data["Subproblema identificado"]||"").trim() !== "";
+            var ok2 = (p.data["Responsable"]||"").trim() !== "";
+            var ok3 = (p.data["Estado"]||"").trim() !== "";
+            var ok4 = (p.data["Sucursal"]||"").trim() !== "";
+            return !(ok1 && ok2 && ok3 && ok4);
+        }""")
+    }
+    css = { "missingRow": {"backgroundColor":"#FFF5F5"} }
+    grid_opts = gob.build()
+    grid_opts["rowClassRules"] = row_rules
 
     grid = AgGrid(
         df_ag,
-        gridOptions=gob.build(),
+        gridOptions=grid_opts,
         update_mode=GridUpdateMode.VALUE_CHANGED | GridUpdateMode.SELECTION_CHANGED,
         allow_unsafe_jscode=True,
         fit_columns_on_grid_load=False,
         height=520,
-        theme="alpine"
+        theme="alpine",
+        custom_css=css
     )
 
-    # Recibir selección
     selected_rows = grid.get("selected_rows", [])
     if selected_rows:
         selected_idxs = [int(r["___idx"]) for r in selected_rows]
 
-    # Guardar cambios que edita el usuario
     updated = grid["data"]
     if updated is not None and len(updated):
         upd = updated.copy()
@@ -345,9 +406,9 @@ if _AGGRID_OK:
                 if col in upd.columns:
                     st.session_state.df.at[gi, col] = row.get(col, st.session_state.df.at[gi, col])
         st.session_state.df = _coerce_types(st.session_state.df)
+        save_df()
 
 else:
-    # Fallback a data_editor (sin per-row dropdown)
     edited = st.data_editor(
         df_view,
         num_rows="dynamic",
@@ -371,38 +432,45 @@ else:
     if not edited.equals(df_view):
         idx_global = st.session_state.df.index[df_view.index]
         st.session_state.df.loc[idx_global, :] = edited.values
+        save_df()
 
-# ---- Acciones bajo el grid ----
+# ---- actions ----
 c1, c2, c3 = st.columns([1,1,1])
 with c1:
     if selected_idxs:
         st.warning(f"Filas seleccionadas para eliminar: {len(selected_idxs)}")
-        if st.button("🗑️ Eliminar seleccionadas", key="delete", help="Quita las filas seleccionadas de la matriz"):
+        if st.button("🗑️ Eliminar seleccionadas", key="delete"):
             st.session_state.df = st.session_state.df.drop(index=selected_idxs).reset_index(drop=True)
-            st.success("Filas eliminadas.")
+            save_df()
+            st.success("Filas eliminadas y guardadas.")
             st.rerun()
     else:
         st.caption("Selecciona filas con el checkbox para eliminarlas.")
+with c2:
+    if st.button("💾 Guardar ahora", key="save_now"):
+        save_df()
+        st.success("Guardado manual exitoso.")
+with c3:
+    if os.path.exists(DATA_FILE):
+        ts = datetime.fromtimestamp(os.path.getmtime(DATA_FILE)).strftime("%Y-%m-%d %H:%M:%S")
+        st.caption(f"Último guardado: {ts}")
 
-# ---- Validaciones obligatorias ----
+# ---- validations ----
 df_all = _coerce_types(st.session_state.df.copy())
 errors = []
-missing_sub = df_all["Subproblema identificado"].astype(str).str.strip().eq("").sum() if not df_all.empty else 0
-missing_resp = df_all["Responsable"].astype(str).str.strip().eq("").sum() if not df_all.empty else 0
-missing_estado = df_all["Estado"].astype(str).str.strip().eq("").sum() if not df_all.empty else 0
-missing_suc = df_all["Sucursal"].astype(str).str.strip().eq("").sum() if not df_all.empty else 0
-
-if missing_sub > 0: errors.append(f"• {missing_sub} fila(s) sin **Subproblema identificado**")
-if missing_resp > 0: errors.append(f"• {missing_resp} fila(s) sin **Responsable**")
-if missing_estado > 0: errors.append(f"• {missing_estado} fila(s) sin **Estado**")
-if missing_suc > 0: errors.append(f"• {missing_suc} fila(s) sin **Sucursal**")
+def _count_empty(col):
+    return df_all[col].astype(str).str.strip().eq("").sum() if not df_all.empty else 0
+for label in ["Subproblema identificado","Responsable","Estado","Sucursal"]:
+    miss = _count_empty(label)
+    if miss > 0:
+        errors.append(f"• {miss} fila(s) sin **{label}**")
 
 if errors:
     st.error("Validaciones pendientes:\n\n" + "\n".join(errors))
 else:
     st.success("✅ Validaciones OK. Puedes exportar la matriz.")
 
-# --------- Exportar a Excel (solo si TODO OK) ---------
+# ---- export ----
 def to_excel_bytes(df: pd.DataFrame) -> bytes:
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
