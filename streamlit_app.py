@@ -26,15 +26,20 @@ st.markdown(
     .soft>button {{ background:{YELLOW}!important; color:#1c1c1c!important; }}
     .section-title {{ font-weight:800; color:{DARK}; margin-top:6px; }}
     </style>
+""",
+    unsafe_allow_html=True
+)
 
-<style>
-/* Aumentar altura y permitir salto de línea en celdas del editor */
-div[data-testid="stDataFrame"] div[role="gridcell"] { 
-    white-space: normal !important; 
-    line-height: 1.3 !important;
-}
-div[data-testid="stDataFrame"] div[role="row"] { min-height: 46px !important; }
-</style>
+# Extra CSS for data editor wrapping
+st.markdown(
+    """
+    <style>
+    div[data-testid="stDataFrame"] div[role="gridcell"] { 
+        white-space: normal !important; 
+        line-height: 1.3 !important;
+    }
+    div[data-testid="stDataFrame"] div[role="row"] { min-height: 46px !important; }
+    </style>
     """,
     unsafe_allow_html=True
 )
@@ -179,6 +184,20 @@ st.write(
     f"<span class='pill'>Sucursales: {len(SUCURSALES)}</span>",
     unsafe_allow_html=True
 )
+
+# Extra CSS for data editor wrapping
+st.markdown(
+    """
+    <style>
+    div[data-testid="stDataFrame"] div[role="gridcell"] { 
+        white-space: normal !important; 
+        line-height: 1.3 !important;
+    }
+    div[data-testid="stDataFrame"] div[role="row"] { min-height: 46px !important; }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 st.divider()
 
 # ===========================
@@ -305,6 +324,24 @@ edited = st.data_editor(
 if not edited.equals(df_view):
     idx_global = st.session_state.df.index[df_view.index]
     st.session_state.df.loc[idx_global, :] = edited.values
+
+
+# ----- Asistente para asignar subproblema por fila -----
+with st.expander("🎯 Asignar subproblema sugerido por código"):
+    if st.session_state.df.empty:
+        st.info("No hay filas en la matriz.")
+    else:
+        idx = st.selectbox("Elige la fila", options=list(st.session_state.df.index))
+        cod_actual = st.session_state.df.loc[idx, "Código"] if "Código" in st.session_state.df.columns else None
+        if not cod_actual or cod_actual not in SUBPROBLEMAS:
+            st.warning("La fila seleccionada no tiene un código con catálogo disponible.")
+        else:
+            opt = st.selectbox("Opciones sugeridas", SUBPROBLEMAS[cod_actual])
+            if st.button("Aplicar a la fila seleccionada"):
+                st.session_state.df.loc[idx, "Subproblema identificado"] = opt
+                st.success("Subproblema asignado.")
+                st.rerun()
+
 
 with st.expander("🗑️ Eliminar filas"):
     if len(st.session_state.df) == 0:
