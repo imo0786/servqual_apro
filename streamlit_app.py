@@ -1,12 +1,17 @@
 # streamlit_app.py
-# Matriz de seguimiento SERVQUAL – APROFAM (per-row subproblema dropdown, no auto-rellenar)
+# Matriz de seguimiento SERVQUAL – APROFAM
+# - Dropdown por fila para "Subproblema identificado" (AG Grid) según Código (sin autorrelleno)
+# - Validaciones OBLIGATORIAS: Subproblema identificado, Responsable, Estado, Sucursal
+# - Eliminar filas seleccionadas (checkbox)
+# - Exportación a Excel (solo si NO hay errores)
+# - Login: admin / Aprof@n2025
 
 import streamlit as st
 import pandas as pd
 from io import BytesIO
 from datetime import date
 
-# --------- AG Grid (para dropdown por fila) ---------
+# --------- AG Grid ---------
 try:
     from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, JsCode
     _AGGRID_OK = True
@@ -32,8 +37,9 @@ st.markdown(
         background:{PRIMARY}; color:white; border:0; border-radius:10px; padding:8px 16px;
         font-weight:700;
       }}
+      .danger>button {{ background:#D92D20 !important; }}
+      .secondary>button {{ background:#E2E8F0 !important; color:#111 !important; }}
       .section-title {{ font-weight:800; color:{DARK}; margin-top:6px; }}
-      /* Envolver texto y aumentar altura en celdas */
       div[data-testid="stDataFrame"] div[role="gridcell"] {{ white-space: normal !important; line-height: 1.3 !important; }}
       div[data-testid="stDataFrame"] div[role="row"] {{ min-height: 46px !important; }}
     </style>
@@ -95,7 +101,7 @@ CAT_ESTADO = ["Pendiente", "En progreso", "Completado", "Bloqueado"]
 CAT_PLAZO_SUG = "Ej.: 30 días, 45 días, 2025-09-15"
 CAT_DIM = ["FIABILIDAD", "CAPACIDAD DE RESPUESTA", "SEGURIDAD", "EMPATÍA", "ASPECTOS TANGIBLES", "EXPERIENCIA/EXPANSIÓN"]
 
-# --------- Preguntas (28) con código + texto completo ---------
+# --------- Preguntas (28) ---------
 PREGUNTAS = [
     ("FIA_P001","¿El personal de recepción le explicó de forma clara y sencilla todos los pasos que debía seguir para su consulta?"),
     ("FIA_P002","¿La atención en caja o el pago de sus servicios fue rápida?"),
@@ -143,27 +149,22 @@ SUBPROBLEMAS = {
     "FIA_P003": ["FIA_P003A - No respetaron orden","FIA_P003B - Saltaron turnos","FIA_P003C - Sin organización","FIA_P003D - Preferencias injustas"],
     "FIA_P004": ["FIA_P004A - Explicación insuficiente","FIA_P004B - Lenguaje técnico","FIA_P004C - Poco tiempo para preguntas"],
     "FIA_P005": ["FIA_P005A - Dificultad para agendar","FIA_P005B - Canales saturados","FIA_P005C - Información confusa"],
-
     "CAP_P006": ["CAP_P006A - Mucha espera","CAP_P006B - Sistema lento","CAP_P006C - Falta personal","CAP_P006D - Desorganización"],
     "CAP_P007": ["CAP_P007A - No mencionaron otros servicios","CAP_P007B - Información poco clara","CAP_P007C - Personal no conocía los servicios","CAP_P007D - No indagaron necesidades adicionales"],
     "CAP_P008": ["CAP_P008A - Tardaron en responder","CAP_P008B - No resolvieron la solicitud","CAP_P008C - Muchas transferencias","CAP_P008D - Contestaron sin interés"],
     "CAP_P009": ["CAP_P009A - Precios altos","CAP_P009B - Sin disponibilidad","CAP_P009C - Sin alternativas","CAP_P009D - Atención poco amable"],
-
     "SEG_P010": ["SEG_P010A - Dudas sobre conocimientos","SEG_P010B - Actitud apresurada","SEG_P010C - Trato impersonal","SEG_P010D - Falta de empatía"],
     "SEG_P011": ["SEG_P011A - Examen superficial","SEG_P011B - Muy rápido","SEG_P011C - Incompleto","SEG_P011D - No evaluaron"],
     "SEG_P012": ["SEG_P012A - No resolvió dudas","SEG_P012B - Lenguaje técnico","SEG_P012C - Interrumpió","SEG_P012D - No hubo tiempo"],
     "SEG_P013": ["SEG_P013A - Baños sucios","SEG_P013B - Sala de espera sucia","SEG_P013C - Desechos mal gestionados","SEG_P013D - Equipos sin desinfección"],
     "SEG_P014": ["SEG_P014A - No explicó riesgos/beneficios","SEG_P014B - No explicó los pasos","SEG_P014C - No confirmó comprensión","SEG_P014D - Falta material informativo"],
     "SEG_P015": ["SEG_P015A - No explicó dosis/horario","SEG_P015B - No explicó efectos secundarios","SEG_P015C - No dio indicaciones escritas","SEG_P015D - Falta seguimiento"],
-
     "EMP_P016": ["EMP_P016A - Trato brusco","EMP_P016B - Sin paciencia","EMP_P016C - Personal grosero","EMP_P016D - Me ignoraron"],
     "EMP_P017": ["EMP_P017A - Parecía desinteresado","EMP_P017B - Muy automático","EMP_P017C - No escuchó","EMP_P017D - Falta empatía"],
     "EMP_P018": ["EMP_P018A - Muy generales","EMP_P018B - No dieron","EMP_P018C - Poco útiles","EMP_P018D - No personalizados"],
-
     "TAN_P019": ["TAN_P019A - Sin rampas","TAN_P019B - Espacios estrechos","TAN_P019C - Barreras físicas","TAN_P019D - Diseño inadecuado"],
     "TAN_P020": ["TAN_P020A - Sin recordatorios","TAN_P020B - Información confusa","TAN_P020C - Llegó tarde","TAN_P020D - No recibí"],
     "TAN_P021": ["TAN_P021A - Mucha espera","TAN_P021B - Sistema lento","TAN_P021C - Falta personal","TAN_P021D - Desorganización"],
-
     "EXP_P022": ["EXP_P022A - No informaron","EXP_P022B - Servicios limitados","EXP_P022C - Personal desconocía","EXP_P022D - No preguntaron"],
     "EXP_P023": ["EXP_P023A - No informaron","EXP_P023B - Sin asesoría virtual","EXP_P023C - Solo presencial","EXP_P023D - Falta tecnología médica"],
     "EXP_P024": ["EXP_P024A - Sin programas","EXP_P024B - Servicios separados","EXP_P024C - No disponible","EXP_P024D - Falta integración"],
@@ -192,12 +193,6 @@ def _coerce_types(df: pd.DataFrame) -> pd.DataFrame:
         if c in df.columns:
             df[c] = df[c].astype(object)
     return df
-
-# Aplicar overrides antes de crear widgets
-ov = st.session_state.pop("_override_filters", None)
-if ov:
-    for k, v in ov.items():
-        st.session_state[k] = v
 
 # --------- Encabezado ---------
 st.markdown("<span class='big-title'>PLAN DE ACCIÓN • MATRIZ DE SEGUIMIENTO</span>", unsafe_allow_html=True)
@@ -256,7 +251,7 @@ if st.button("➕ Agregar por dimensión", type="primary"):
             "Acción correctiva": "",
             "Fecha seguimiento": date.today(),
             "Responsable": resp_to_add,
-            "Plazo": "",                      # vacío por defecto
+            "Plazo": "",                      # puede quedar vacío
             "Estado": estado_to_add,
             "% Avance": avance_to_add,
             "Sucursal": suc_to_add,
@@ -264,10 +259,6 @@ if st.button("➕ Agregar por dimensión", type="primary"):
     if new_rows:
         st.session_state.df = pd.concat([st.session_state.df, pd.DataFrame(new_rows)], ignore_index=True)
         st.session_state.df = _coerce_types(st.session_state.df)
-        st.session_state["_override_filters"] = {"f_dim": dim_to_add,
-                                                 "f_resp": (resp_to_add if resp_to_add else "Todos"),
-                                                 "f_estado": estado_to_add,
-                                                 "f_suc": [suc_to_add]}
         st.success(f"Agregadas {len(new_rows)} filas de {dim_to_add}.")
         st.rerun()
 
@@ -279,7 +270,7 @@ df_view = st.session_state.df.copy()
 if st.session_state.get("f_dim") not in (None, "Todas"):
     df_view = df_view[df_view["Dimensión"] == st.session_state["f_dim"]]
 if st.session_state.get("f_resp") not in (None, "Todos"):
-    df_view = df_view[df_view["Responsable"] == st.session_state["f_resp"]]
+    df_view = df_view[df_view["Responsable"] == st.session_state.get("f_resp")]
 if st.session_state.get("f_estado") not in (None, "Todos"):
     df_view = df_view[df_view["Estado"] == st.session_state["f_estado"]]
 if st.session_state.get("f_suc"):
@@ -290,15 +281,19 @@ if len(st.session_state.df) and df_view.empty:
 
 st.write("### 🧾 Matriz (editable)")
 
+selected_idxs = []  # para eliminar filas
+
 if _AGGRID_OK:
-    # ---- AG Grid con opciones por fila (Subproblema identificado) ----
+    # ---- AG Grid con per-row dropdown y selección múltiple ----
     df_ag = df_view.copy().reset_index().rename(columns={"index": "___idx"})
-    df_ag["subOptions"] = df_ag["Código"].apply(lambda c: [""] + SUBPROBLEMAS.get(c, []))
+    df_ag["subOptions"] = df_ag["Código"].apply(lambda c: tuple([""] + SUBPROBLEMAS.get(c, [])))  # tupla = hashable
     if "Fecha seguimiento" in df_ag.columns:
         df_ag["Fecha seguimiento"] = pd.to_datetime(df_ag["Fecha seguimiento"], errors="coerce").dt.strftime("%Y-%m-%d")
 
     gob = GridOptionsBuilder.from_dataframe(df_ag, editable=True)
-    gob.configure_column("Código", editable=False, width=120)
+    # Selección por checkbox (para eliminar)
+    gob.configure_selection(selection_mode="multiple", use_checkbox=True)
+    gob.configure_column("Código", editable=False, width=120, checkboxSelection=True, headerCheckboxSelection=True)
     gob.configure_column("Dimensión", editable=False, width=160)
     gob.configure_column("Pregunta evaluada", editable=False, wrapText=True, autoHeight=True, width=700)
     gob.configure_column(
@@ -319,17 +314,26 @@ if _AGGRID_OK:
     gob.configure_column("Sucursal", editable=True, cellEditor="agSelectCellEditor",
                          cellEditorParams={"values": SUCURSALES}, width=200)
     gob.configure_column("% Avance", type=["numericColumn"], editable=True, width=120)
+
     gob.configure_column("___idx", hide=True)
+    gob.configure_column("subOptions", hide=True)
 
     grid = AgGrid(
         df_ag,
         gridOptions=gob.build(),
-        update_mode=GridUpdateMode.VALUE_CHANGED,
+        update_mode=GridUpdateMode.VALUE_CHANGED | GridUpdateMode.SELECTION_CHANGED,
         allow_unsafe_jscode=True,
         fit_columns_on_grid_load=False,
-        height=460,
+        height=520,
         theme="alpine"
     )
+
+    # Recibir selección
+    selected_rows = grid.get("selected_rows", [])
+    if selected_rows:
+        selected_idxs = [int(r["___idx"]) for r in selected_rows]
+
+    # Guardar cambios que edita el usuario
     updated = grid["data"]
     if updated is not None and len(updated):
         upd = updated.copy()
@@ -341,8 +345,9 @@ if _AGGRID_OK:
                 if col in upd.columns:
                     st.session_state.df.at[gi, col] = row.get(col, st.session_state.df.at[gi, col])
         st.session_state.df = _coerce_types(st.session_state.df)
+
 else:
-    # ---- Fallback a data_editor (lista global) ----
+    # Fallback a data_editor (sin per-row dropdown)
     edited = st.data_editor(
         df_view,
         num_rows="dynamic",
@@ -351,7 +356,9 @@ else:
             "Código": st.column_config.SelectboxColumn(options=[c for c, _ in PREGUNTAS]),
             "Dimensión": st.column_config.SelectboxColumn(options=CAT_DIM),
             "Pregunta evaluada": st.column_config.SelectboxColumn(options=[f"{c} – {t}" for c, t in PREGUNTAS], width="large"),
-            "Subproblema identificado": st.column_config.SelectboxColumn(options=[""] + sorted({opt for lst in SUBPROBLEMAS.values() for opt in lst})),
+            "Subproblema identificado": st.column_config.SelectboxColumn(
+                options=[""] + sorted({opt for lst in SUBPROBLEMAS.values() for opt in lst})
+            ),
             "Responsable": st.column_config.SelectboxColumn(options=[""] + CAT_RESPONSABLES),
             "Plazo": st.column_config.TextColumn(help=f"Formato sugerido: {CAT_PLAZO_SUG}"),
             "Estado": st.column_config.SelectboxColumn(options=CAT_ESTADO),
@@ -365,16 +372,49 @@ else:
         idx_global = st.session_state.df.index[df_view.index]
         st.session_state.df.loc[idx_global, :] = edited.values
 
-# --------- Exportar a Excel ---------
+# ---- Acciones bajo el grid ----
+c1, c2, c3 = st.columns([1,1,1])
+with c1:
+    if selected_idxs:
+        st.warning(f"Filas seleccionadas para eliminar: {len(selected_idxs)}")
+        if st.button("🗑️ Eliminar seleccionadas", key="delete", help="Quita las filas seleccionadas de la matriz"):
+            st.session_state.df = st.session_state.df.drop(index=selected_idxs).reset_index(drop=True)
+            st.success("Filas eliminadas.")
+            st.rerun()
+    else:
+        st.caption("Selecciona filas con el checkbox para eliminarlas.")
+
+# ---- Validaciones obligatorias ----
+df_all = _coerce_types(st.session_state.df.copy())
+errors = []
+missing_sub = df_all["Subproblema identificado"].astype(str).str.strip().eq("").sum() if not df_all.empty else 0
+missing_resp = df_all["Responsable"].astype(str).str.strip().eq("").sum() if not df_all.empty else 0
+missing_estado = df_all["Estado"].astype(str).str.strip().eq("").sum() if not df_all.empty else 0
+missing_suc = df_all["Sucursal"].astype(str).str.strip().eq("").sum() if not df_all.empty else 0
+
+if missing_sub > 0: errors.append(f"• {missing_sub} fila(s) sin **Subproblema identificado**")
+if missing_resp > 0: errors.append(f"• {missing_resp} fila(s) sin **Responsable**")
+if missing_estado > 0: errors.append(f"• {missing_estado} fila(s) sin **Estado**")
+if missing_suc > 0: errors.append(f"• {missing_suc} fila(s) sin **Sucursal**")
+
+if errors:
+    st.error("Validaciones pendientes:\n\n" + "\n".join(errors))
+else:
+    st.success("✅ Validaciones OK. Puedes exportar la matriz.")
+
+# --------- Exportar a Excel (solo si TODO OK) ---------
 def to_excel_bytes(df: pd.DataFrame) -> bytes:
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="Matriz")
     return buffer.getvalue()
 
-st.download_button(
-    "⬇️ Exportar a Excel",
-    data=to_excel_bytes(st.session_state.df),
-    file_name="matriz_servqual_aprofam.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-)
+if not errors:
+    st.download_button(
+        "⬇️ Exportar a Excel",
+        data=to_excel_bytes(st.session_state.df),
+        file_name="matriz_servqual_aprofam.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+else:
+    st.button("⬇️ Exportar a Excel", disabled=True, key="disabled_export", help="Completa los campos obligatorios para habilitar la exportación.")
