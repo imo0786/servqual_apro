@@ -132,6 +132,12 @@ DEFAULT_COLS = [
 if "df" not in st.session_state:
     st.session_state.df = pd.DataFrame(columns=DEFAULT_COLS)
 
+# Apply deferred filter overrides BEFORE widgets are created
+ov = st.session_state.pop("_override_filters", None)
+if ov:
+    for k,v in ov.items():
+        st.session_state[k] = v
+
 # ---------- HEADER ----------
 st.markdown("<span class='big-title'>PLAN DE ACCIÓN • MATRIZ DE SEGUIMIENTO</span>", unsafe_allow_html=True)
 st.write(
@@ -147,14 +153,23 @@ st.divider()
 # ===========================
 st.markdown("<div class='section-title'>Filtros de visualización</div>", unsafe_allow_html=True)
 fc1, fc2, fc3, fc4 = st.columns([1.2, 1.2, 1.2, 1.2])
+opts_dim = ["Todas"]+CAT_DIM
+dim_val = st.session_state.get("f_dim", "Todas")
+dim_idx = opts_dim.index(dim_val) if dim_val in opts_dim else 0
 with fc1:
-    f_dim = st.selectbox("Dimensión", ["Todas"]+CAT_DIM, index=0, key="f_dim")
+    f_dim = st.selectbox("Dimensión", opts_dim, index=dim_idx, key="f_dim")
+opts_resp = ["Todos"]+CAT_RESPONSABLES
+resp_val = st.session_state.get("f_resp", "Todos")
+resp_idx = opts_resp.index(resp_val) if resp_val in opts_resp else 0
 with fc2:
-    f_resp = st.selectbox("Responsable", ["Todos"]+CAT_RESPONSABLES, index=0, key="f_resp")
+    f_resp = st.selectbox("Responsable", opts_resp, index=resp_idx, key="f_resp")
+opts_est = ["Todos"]+CAT_ESTADO
+est_val = st.session_state.get("f_estado", "Todos")
+est_idx = opts_est.index(est_val) if est_val in opts_est else 0
 with fc3:
-    f_estado = st.selectbox("Estado", ["Todos"]+CAT_ESTADO, index=0, key="f_estado")
+    f_estado = st.selectbox("Estado", opts_est, index=est_idx, key="f_estado")
 with fc4:
-    f_suc = st.multiselect("Sucursal", SUCURSALES, placeholder="Todas", key="f_suc")
+    f_suc = st.multiselect("Sucursal", SUCURSALES, default=st.session_state.get("f_suc", []), key="f_suc")
 
 st.divider()
 
@@ -174,20 +189,18 @@ with ac4:
 with ac5:
     suc_to_add = st.selectbox("Sucursal (asignar)", SUCURSALES, index=0, key="suc_to_add")
 
-# Listar preguntas de la dimensión elegida
 pregs_dim = [ (c,t) for c,t in PREGUNTAS if MAP_DIM[c] == dim_to_add ]
 labels_dim = [ f"{c} – {t}" for c,t in pregs_dim ]
 
 sel_all = st.checkbox("Seleccionar TODAS las preguntas de esta dimensión", value=True)
-if sel_all:
-    sel_labels = labels_dim
+if not sel_all:
+    sel_labels = st.multiselect("Seleccionar preguntas específicas", labels_dim, default=labels_dim)
 else:
-    sel_labels = st.multiselect("Seleccionar preguntas específicas", labels_dim)
+    sel_labels = labels_dim
 
 if st.button("➕ Agregar por dimensión", type="primary"):
-    to_use = sel_labels if not sel_all else labels_dim
     new_rows = []
-    for opt in to_use:
+    for opt in sel_labels:
         codigo = opt.split(" – ")[0]
         new_rows.append({
             "Código": codigo,
@@ -205,11 +218,13 @@ if st.button("➕ Agregar por dimensión", type="primary"):
         })
     if new_rows:
         st.session_state.df = pd.concat([st.session_state.df, pd.DataFrame(new_rows)], ignore_index=True)
-        # Ajustar filtros para mostrar lo recién agregado
-        st.session_state.f_dim = dim_to_add
-        st.session_state.f_resp = (resp_to_add if resp_to_add else "Todos")
-        st.session_state.f_estado = estado_to_add
-        st.session_state.f_suc = [suc_to_add]
+        # Defer filter changes to next rerun to avoid StreamlitAPIException
+        st.session_state["_override_filters"] = {
+            "f_dim": dim_to_add,
+            "f_resp": (resp_to_add if resp_to_add else "Todos"),
+            "f_estado": estado_to_add,
+            "f_suc": [suc_to_add],
+        }
         st.success(f"Agregadas {len(new_rows)} filas de {dim_to_add}.")
         st.rerun()
 
@@ -218,7 +233,6 @@ st.divider()
 # =====================
 # 3) MATRIZ (EDITABLE)
 # =====================
-# Aplicar filtros a la vista
 df_view = st.session_state.df.copy()
 if f_dim != "Todas":
     df_view = df_view[df_view["Dimensión"] == f_dim]
@@ -229,7 +243,6 @@ if f_estado != "Todos":
 if f_suc:
     df_view = df_view[df_view["Sucursal"].isin(f_suc)]
 
-# Mensaje si filtros esconden datos
 if len(st.session_state.df) and df_view.empty:
     st.info("No hay filas que coincidan con los filtros activos. Revisa Responsable/Estado/Sucursal.")
 
@@ -252,12 +265,10 @@ edited = st.data_editor(
     hide_index=True
 )
 
-# Sincronizar vista con DF global
 if not edited.equals(df_view):
     idx_global = st.session_state.df.index[df_view.index]
     st.session_state.df.loc[idx_global, :] = edited.values
 
-# Eliminar filas
 with st.expander("🗑️ Eliminar filas"):
     if len(st.session_state.df) == 0:
         st.info("No hay filas en la matriz.")
@@ -268,7 +279,6 @@ with st.expander("🗑️ Eliminar filas"):
             st.session_state.df.reset_index(drop=True, inplace=True)
             st.success("Filas eliminadas.")
 
-# Exportar Excel
 def to_excel_bytes(df: pd.DataFrame) -> bytes:
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
