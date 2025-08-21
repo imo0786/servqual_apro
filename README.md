@@ -1,4 +1,4 @@
-# SERVQUAL APROFAM • Streamlit App (con filtro de sucursal y carga masiva)
+# SERVQUAL APROFAM • Streamlit App (filtros separados + carga por dimensión)
 
 ## Ejecutar local
 ```bash

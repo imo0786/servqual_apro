@@ -24,6 +24,7 @@ st.markdown(
     }}
     .danger>button {{ background:#d7263d!important; }}
     .soft>button {{ background:{YELLOW}!important; color:#1c1c1c!important; }}
+    .section-title {{ font-weight:800; color:{DARK}; margin-top:6px; }}
     </style>
     """,
     unsafe_allow_html=True
@@ -131,7 +132,7 @@ DEFAULT_COLS = [
 if "df" not in st.session_state:
     st.session_state.df = pd.DataFrame(columns=DEFAULT_COLS)
 
-# ---------- UI ----------
+# ---------- HEADER ----------
 st.markdown("<span class='big-title'>PLAN DE ACCIÓN • MATRIZ DE SEGUIMIENTO</span>", unsafe_allow_html=True)
 st.write(
     f"<span class='pill'>Total preguntas: 28</span>"
@@ -141,56 +142,76 @@ st.write(
 )
 st.divider()
 
-# Filtros y acciones principales
-c1,c2,c3,c4 = st.columns([1.2,1.2,1.2,1.2])
-with c1:
-    f_dim = st.selectbox("Filtrar por dimensión", ["Todas"]+CAT_DIM)
-with c2:
-    f_resp = st.selectbox("Filtrar por responsable", ["Todos"]+CAT_RESPONSABLES)
-with c3:
-    f_estado = st.selectbox("Filtrar por estado", ["Todos"]+CAT_ESTADO)
-with c4:
-    f_suc = st.multiselect("Filtrar por sucursal", SUCURSALES, placeholder="Todas")
+# ===========================
+# 1) FILTROS DE VISUALIZACIÓN
+# ===========================
+st.markdown("<div class='section-title'>Filtros de visualización</div>", unsafe_allow_html=True)
+fc1, fc2, fc3, fc4 = st.columns([1.2, 1.2, 1.2, 1.2])
+with fc1:
+    f_dim = st.selectbox("Dimensión", ["Todas"]+CAT_DIM, index=0, key="f_dim")
+with fc2:
+    f_resp = st.selectbox("Responsable", ["Todos"]+CAT_RESPONSABLES, index=0, key="f_resp")
+with fc3:
+    f_estado = st.selectbox("Estado", ["Todos"]+CAT_ESTADO, index=0, key="f_estado")
+with fc4:
+    f_suc = st.multiselect("Sucursal", SUCURSALES, placeholder="Todas", key="f_suc")
 
-c5,c6,c7 = st.columns([1.2,1.2,2])
-with c5:
-    suc_default = st.selectbox("Sucursal por defecto (nuevas filas)", SUCURSALES, index=0)
-with c6:
-    if st.button("📥 Cargar 28 preguntas (una vez)"):
-        base = []
-        for cod, txt in PREGUNTAS:
-            base.append({
-                "Código": cod, "Dimensión": MAP_DIM[cod], "Pregunta evaluada": f"{cod} – {txt}",
-                "Subproblema identificado": "", "Causa raíz": "", "Acción correctiva": "",
-                "Fecha seguimiento": date.today().isoformat(), "Responsable": "", "Plazo": "30 días",
-                "Estado": "Pendiente", "% Avance": 0, "Sucursal": suc_default,
-            })
-        st.session_state.df = pd.DataFrame(base, columns=DEFAULT_COLS)
-        st.success("Se cargaron las 28 preguntas base.")
-with c7:
-    cols = st.columns([1,1,1,1])
-    with cols[0]:
-        sel_p = st.multiselect("Seleccionar preguntas para agregar", [f"{c} – {t}" for c,t in PREGUNTAS])
-    with cols[1]:
-        sel_resp = st.selectbox("Responsable", [""]+CAT_RESPONSABLES, index=0)
-    with cols[2]:
-        sel_estado = st.selectbox("Estado", CAT_ESTADO, index=0)
-    with cols[3]:
-        sel_avance = st.slider("% Avance", 0, 100, 0, 5)
-    if st.button("➕ Agregar seleccionadas"):
-        new_rows = []
-        for opt in sel_p:
-            codigo = opt.split(" – ")[0]
-            new_rows.append({
-                "Código": codigo, "Dimensión": MAP_DIM[codigo], "Pregunta evaluada": opt,
-                "Subproblema identificado": "", "Causa raíz": "", "Acción correctiva": "",
-                "Fecha seguimiento": date.today().isoformat(), "Responsable": sel_resp,
-                "Plazo": "30 días", "Estado": sel_estado, "% Avance": sel_avance, "Sucursal": suc_default,
-            })
-        if new_rows:
-            st.session_state.df = pd.concat([st.session_state.df, pd.DataFrame(new_rows)], ignore_index=True)
-            st.success(f"Agregadas {len(new_rows)} filas.")
+st.divider()
 
+# ==============================
+# 2) AGREGAR FILAS POR DIMENSIÓN
+# ==============================
+st.markdown("<div class='section-title'>Agregar filas por dimensión</div>", unsafe_allow_html=True)
+ac1, ac2, ac3, ac4, ac5 = st.columns([1.2, 1.2, 1.2, 1.2, 1.2])
+with ac1:
+    dim_to_add = st.selectbox("Dimensión a cargar", CAT_DIM, index=0, key="dim_to_add")
+with ac2:
+    resp_to_add = st.selectbox("Responsable (asignar)", [""]+CAT_RESPONSABLES, index=0, key="resp_to_add")
+with ac3:
+    estado_to_add = st.selectbox("Estado (asignar)", CAT_ESTADO, index=0, key="estado_to_add")
+with ac4:
+    avance_to_add = st.slider("% Avance (asignar)", 0, 100, 0, 5, key="avance_to_add")
+with ac5:
+    suc_to_add = st.selectbox("Sucursal (asignar)", SUCURSALES, index=0, key="suc_to_add")
+
+# Listar preguntas de la dimensión elegida
+pregs_dim = [ (c,t) for c,t in PREGUNTAS if MAP_DIM[c] == dim_to_add ]
+labels_dim = [ f"{c} – {t}" for c,t in pregs_dim ]
+
+sel_all = st.checkbox("Seleccionar TODAS las preguntas de esta dimensión", value=True)
+if sel_all:
+    sel_labels = labels_dim
+else:
+    sel_labels = st.multiselect("Seleccionar preguntas específicas", labels_dim)
+
+if st.button("➕ Agregar por dimensión", type="primary"):
+    to_use = sel_labels if not sel_all else labels_dim
+    new_rows = []
+    for opt in to_use:
+        codigo = opt.split(" – ")[0]
+        new_rows.append({
+            "Código": codigo,
+            "Dimensión": MAP_DIM[codigo],
+            "Pregunta evaluada": opt,
+            "Subproblema identificado": "",
+            "Causa raíz": "",
+            "Acción correctiva": "",
+            "Fecha seguimiento": date.today().isoformat(),
+            "Responsable": resp_to_add,
+            "Plazo": "30 días",
+            "Estado": estado_to_add,
+            "% Avance": avance_to_add,
+            "Sucursal": suc_to_add,
+        })
+    if new_rows:
+        st.session_state.df = pd.concat([st.session_state.df, pd.DataFrame(new_rows)], ignore_index=True)
+        st.success(f"Agregadas {len(new_rows)} filas de {dim_to_add}.")
+
+st.divider()
+
+# =====================
+# 3) MATRIZ (EDITABLE)
+# =====================
 # Aplicar filtros a la vista
 df_view = st.session_state.df.copy()
 if f_dim != "Todas":
@@ -202,7 +223,10 @@ if f_estado != "Todos":
 if f_suc:
     df_view = df_view[df_view["Sucursal"].isin(f_suc)]
 
-# Tabla editable
+# Mensaje si filtros esconden datos
+if len(st.session_state.df) and df_view.empty:
+    st.info("No hay filas que coincidan con los filtros activos. Revisa Responsable/Estado/Sucursal.")
+
 st.write("### 🧾 Matriz (editable)")
 edited = st.data_editor(
     df_view,
