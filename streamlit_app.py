@@ -18,10 +18,6 @@ st.markdown(
         display:inline-block; padding:4px 10px; border-radius:999px;
         font-weight:600; margin-right:6px; font-size:.8rem; color:white; background:{PRIMARY};
     }}
-    .metric-card {{
-        border:1px solid #e9eef5; border-left:6px solid {PRIMARY};
-        padding:12px 14px; border-radius:12px; background:#fff;
-    }}
     .stButton>button {{
         background:{PRIMARY}; color:white; border:0; border-radius:10px; padding:8px 16px;
         font-weight:700;
@@ -41,7 +37,6 @@ if "authed" not in st.session_state:
     st.session_state.authed = False
 
 with st.sidebar:
-    st.image("https://i.imgur.com/t3w9wxs.png", use_column_width=True)
     st.markdown("<div class='big-title'>SERVQUAL • APROFAM</div>", unsafe_allow_html=True)
     st.caption("Matriz de acción y seguimiento")
 
@@ -75,31 +70,13 @@ CAT_RESPONSABLES = [
     "MIRIAM YESENIA PAREDES QUINTEROS",
 ]
 
-# Sucursales desde tu catálogo (IDs omitidos para la UI)
 SUCURSALES = [
-    "CLINICA AMATITLAN",
-    "CLINICA ANTIGUA",
-    "CLINICA BARBERENA",
-    "CLINICA CHIMALTENANGO",
-    "CLINICA MALACATAN",
-    "CLINICA MAZATENANGO",
-    "CLINICA PUERTO BARRIOS",
-    "CLINICA QUICHE",
-    "CLINICA RETALHULEU",
-    "CLINICA VILLA NUEVA",
-    "CLINICA ZONA 6",
-    "CLINICA ZONA 19",
-    "HOSPITAL CENTRAL",
-    "HOSPITAL COATEPEQUE",
-    "HOSPITAL COBAN",
-    "HOSPITAL ESCUINTLA",
-    "HOSPITAL HUEHUETENANGO",
-    "HOSPITAL JUTIAPA",
-    "HOSPITAL PETEN",
-    "HOSPITAL QUETZALTENANGO",
-    "HOSPITAL SAN PEDRO",
-    "HOSPITAL ZACAPA",
-    "CLINICA ZONA 17",
+    "CLINICA AMATITLAN","CLINICA ANTIGUA","CLINICA BARBERENA","CLINICA CHIMALTENANGO",
+    "CLINICA MALACATAN","CLINICA MAZATENANGO","CLINICA PUERTO BARRIOS","CLINICA QUICHE",
+    "CLINICA RETALHULEU","CLINICA VILLA NUEVA","CLINICA ZONA 6","CLINICA ZONA 19",
+    "HOSPITAL CENTRAL","HOSPITAL COATEPEQUE","HOSPITAL COBAN","HOSPITAL ESCUINTLA",
+    "HOSPITAL HUEHUETENANGO","HOSPITAL JUTIAPA","HOSPITAL PETEN","HOSPITAL QUETZALTENANGO",
+    "HOSPITAL SAN PEDRO","HOSPITAL ZACAPA","CLINICA ZONA 17"
 ]
 
 CAT_ESTADO = ["Pendiente", "En progreso", "Completado", "Bloqueado"]
@@ -137,7 +114,6 @@ PREGUNTAS = [
     ("EXP_P027","¿APROFAM es su 1ª opción (lab/farma/img)?"),
     ("EXP_P028","¿Recomendaría APROFAM?"),
 ]
-# mapa código->dimensión (para filtrado)
 MAP_DIM = {
     **{k:"FIABILIDAD" for k in ["FIA_P001","FIA_P002","FIA_P003","FIA_P004","FIA_P005"]},
     **{k:"CAPACIDAD DE RESPUESTA" for k in ["CAP_P006","CAP_P007","CAP_P008","CAP_P009"]},
@@ -147,7 +123,7 @@ MAP_DIM = {
     **{k:"EXPERIENCIA/EXPANSIÓN" for k in ["EXP_P022","EXP_P023","EXP_P024","EXP_P025","EXP_P026","EXP_P027","EXP_P028"]},
 }
 
-# ---------- ESTADO INICIAL DE LA MATRIZ ----------
+# ---------- ESTADO INICIAL ----------
 DEFAULT_COLS = [
     "Código","Dimensión","Pregunta evaluada","Subproblema identificado","Causa raíz",
     "Acción correctiva","Fecha seguimiento","Responsable","Plazo","Estado","% Avance","Sucursal"
@@ -155,18 +131,18 @@ DEFAULT_COLS = [
 if "df" not in st.session_state:
     st.session_state.df = pd.DataFrame(columns=DEFAULT_COLS)
 
-# ---------- CABECERA ----------
+# ---------- UI ----------
 st.markdown("<span class='big-title'>PLAN DE ACCIÓN • MATRIZ DE SEGUIMIENTO</span>", unsafe_allow_html=True)
 st.write(
     f"<span class='pill'>Total preguntas: 28</span>"
-    f"<span class='pill' style='background:{YELLOW}; color:{DARK}'>Catálogo responsables: {len(CAT_RESPONSABLES)}</span>"
+    f"<span class='pill' style='background:{YELLOW}; color:{DARK}'>Responsables: {len(CAT_RESPONSABLES)}</span>"
     f"<span class='pill'>Sucursales: {len(SUCURSALES)}</span>",
     unsafe_allow_html=True
 )
 st.divider()
 
-# ---------- CONTROLES DE FILTRO ----------
-c1,c2,c3,c4,c5 = st.columns([1.2,1.2,1.2,1,1.2])
+# Filtros y acciones principales
+c1,c2,c3,c4 = st.columns([1.2,1.2,1.2,1.2])
 with c1:
     f_dim = st.selectbox("Filtrar por dimensión", ["Todas"]+CAT_DIM)
 with c2:
@@ -174,70 +150,48 @@ with c2:
 with c3:
     f_estado = st.selectbox("Filtrar por estado", ["Todos"]+CAT_ESTADO)
 with c4:
-    st.caption("Acciones")
-    if st.button("➕ Agregar fila", use_container_width=True):
-        # Fila vacía con valores por defecto
-        row = {
-            "Código": "",
-            "Dimensión": "",
-            "Pregunta evaluada": "",
-            "Subproblema identificado": "",
-            "Causa raíz": "",
-            "Acción correctiva": "",
-            "Fecha seguimiento": date.today().isoformat(),
-            "Responsable": CAT_RESPONSABLES[0],
-            "Plazo": CAT_PLAZO[1],
-            "Estado": "Pendiente",
-            "% Avance": 0,
-            "Sucursal": SUCURSALES[0],
-        }
-        st.session_state.df = pd.concat([st.session_state.df, pd.DataFrame([row])], ignore_index=True)
+    f_suc = st.multiselect("Filtrar por sucursal", SUCURSALES, placeholder="Todas")
+
+c5,c6,c7 = st.columns([1.2,1.2,2])
 with c5:
-    f_suc = st.multiselect("Sucursal", SUCURSALES, placeholder="Todas")
+    suc_default = st.selectbox("Sucursal por defecto (nuevas filas)", SUCURSALES, index=0)
+with c6:
+    if st.button("📥 Cargar 28 preguntas (una vez)"):
+        base = []
+        for cod, txt in PREGUNTAS:
+            base.append({
+                "Código": cod, "Dimensión": MAP_DIM[cod], "Pregunta evaluada": f"{cod} – {txt}",
+                "Subproblema identificado": "", "Causa raíz": "", "Acción correctiva": "",
+                "Fecha seguimiento": date.today().isoformat(), "Responsable": "", "Plazo": "30 días",
+                "Estado": "Pendiente", "% Avance": 0, "Sucursal": suc_default,
+            })
+        st.session_state.df = pd.DataFrame(base, columns=DEFAULT_COLS)
+        st.success("Se cargaron las 28 preguntas base.")
+with c7:
+    cols = st.columns([1,1,1,1])
+    with cols[0]:
+        sel_p = st.multiselect("Seleccionar preguntas para agregar", [f"{c} – {t}" for c,t in PREGUNTAS])
+    with cols[1]:
+        sel_resp = st.selectbox("Responsable", [""]+CAT_RESPONSABLES, index=0)
+    with cols[2]:
+        sel_estado = st.selectbox("Estado", CAT_ESTADO, index=0)
+    with cols[3]:
+        sel_avance = st.slider("% Avance", 0, 100, 0, 5)
+    if st.button("➕ Agregar seleccionadas"):
+        new_rows = []
+        for opt in sel_p:
+            codigo = opt.split(" – ")[0]
+            new_rows.append({
+                "Código": codigo, "Dimensión": MAP_DIM[codigo], "Pregunta evaluada": opt,
+                "Subproblema identificado": "", "Causa raíz": "", "Acción correctiva": "",
+                "Fecha seguimiento": date.today().isoformat(), "Responsable": sel_resp,
+                "Plazo": "30 días", "Estado": sel_estado, "% Avance": sel_avance, "Sucursal": suc_default,
+            })
+        if new_rows:
+            st.session_state.df = pd.concat([st.session_state.df, pd.DataFrame(new_rows)], ignore_index=True)
+            st.success(f"Agregadas {len(new_rows)} filas.")
 
-# ---------- SELECTORES AMIGABLES PARA NUEVAS FILAS ----------
-with st.expander("📌 Insertar nueva acción (con selectores)"):
-    colA,colB = st.columns([1.2,2])
-    with colA:
-        opt = st.selectbox("Pregunta", options=[f"{c} – {t}" for c,t in PREGUNTAS])
-        codigo = opt.split(" – ")[0]
-        dimension = MAP_DIM[codigo]
-    with colB:
-        subp = st.text_input("Subproblema identificado", "")
-        causa = st.text_input("Causa raíz", "")
-        accion = st.text_input("Acción correctiva", "")
-    col1,col2,col3,col4,col5 = st.columns(5)
-    with col1:
-        fecha = st.date_input("Fecha de seguimiento", value=date.today())
-    with col2:
-        resp = st.selectbox("Responsable", CAT_RESPONSABLES)
-    with col3:
-        plazo = st.selectbox("Plazo", CAT_PLAZO, index=1)
-    with col4:
-        estado = st.selectbox("Estado", CAT_ESTADO, index=0)
-    with col5:
-        suc = st.selectbox("Sucursal", SUCURSALES)
-    avance = st.slider("% Avance", 0, 100, 0, 5)
-
-    if st.button("Agregar a la matriz", type="primary"):
-        row = {
-            "Código": codigo,
-            "Dimensión": dimension,
-            "Pregunta evaluada": opt,
-            "Subproblema identificado": subp,
-            "Causa raíz": causa,
-            "Acción correctiva": accion,
-            "Fecha seguimiento": fecha.isoformat(),
-            "Responsable": resp,
-            "Plazo": plazo,
-            "Estado": estado,
-            "% Avance": avance,
-            "Sucursal": suc,
-        }
-        st.session_state.df = pd.concat([st.session_state.df, pd.DataFrame([row])], ignore_index=True)
-        st.success("Fila agregada.")
-
-# ---------- APLICAR FILTROS A VISTA ----------
+# Aplicar filtros a la vista
 df_view = st.session_state.df.copy()
 if f_dim != "Todas":
     df_view = df_view[df_view["Dimensión"] == f_dim]
@@ -248,30 +202,7 @@ if f_estado != "Todos":
 if f_suc:
     df_view = df_view[df_view["Sucursal"].isin(f_suc)]
 
-# ---------- MODAL PARA ASIGNAR SUCURSAL MASIVA ----------
-try:
-    # Disponible en streamlit 1.31+
-    @st.experimental_dialog("Asignar sucursal a filas visibles")
-    def assign_sucursal_dialog():
-        suc_sel = st.selectbox("Selecciona la sucursal", SUCURSALES)
-        if st.button("Aplicar a filas visibles", type="primary"):
-            idx_global = st.session_state.df.index[df_view.index]
-            st.session_state.df.loc[idx_global, "Sucursal"] = suc_sel
-            st.success(f"Sucursal '{suc_sel}' asignada a {len(idx_global)} filas.")
-            st.rerun()
-    if st.button("🏷️ Asignar Sucursal (modal)"):
-        assign_sucursal_dialog()
-except Exception:
-    # Fallback si no existe experimental_dialog
-    with st.expander("🏷️ Asignar Sucursal (rápido)"):
-        suc_sel = st.selectbox("Sucursal para aplicar", SUCURSALES, key="fallback_suc")
-        if st.button("Aplicar a filas visibles", key="fallback_btn"):
-            idx_global = st.session_state.df.index[df_view.index]
-            st.session_state.df.loc[idx_global, "Sucursal"] = suc_sel
-            st.success(f"Sucursal '{suc_sel}' asignada a {len(idx_global)} filas.")
-            st.rerun()
-
-# ---------- TABLA EDITABLE ----------
+# Tabla editable
 st.write("### 🧾 Matriz (editable)")
 edited = st.data_editor(
     df_view,
@@ -282,7 +213,7 @@ edited = st.data_editor(
         "Dimensión": st.column_config.SelectboxColumn(options=CAT_DIM),
         "Pregunta evaluada": st.column_config.SelectboxColumn(options=[f"{c} – {t}" for c,t in PREGUNTAS], width="large"),
         "Responsable": st.column_config.SelectboxColumn(options=CAT_RESPONSABLES),
-        "Plazo": st.column_config.SelectboxColumn(options=CAT_PLAZO),
+        "Plazo": st.column_config.SelectboxColumn(options=["15 días","30 días","45 días","60 días"]),
         "Estado": st.column_config.SelectboxColumn(options=CAT_ESTADO),
         "Sucursal": st.column_config.SelectboxColumn(options=SUCURSALES),
         "% Avance": st.column_config.NumberColumn(format="%.0f", min_value=0, max_value=100, step=5),
@@ -291,42 +222,32 @@ edited = st.data_editor(
     hide_index=True
 )
 
-# Sincroniza cambios de la vista con el dataframe global
-# (reemplaza únicamente el subconjunto filtrado)
+# Sincronizar vista con DF global
 if not edited.equals(df_view):
-    # Localiza índices globales de las filas que están en la vista
     idx_global = st.session_state.df.index[df_view.index]
     st.session_state.df.loc[idx_global, :] = edited.values
 
-# ---------- ELIMINAR FILAS SELECCIONADAS ----------
+# Eliminar filas
 with st.expander("🗑️ Eliminar filas"):
     if len(st.session_state.df) == 0:
         st.info("No hay filas en la matriz.")
     else:
-        to_delete = st.multiselect(
-            "Selecciona por índice para eliminar",
-            options=list(st.session_state.df.index),
-            help="Índices del dataframe completo"
-        )
-        if st.button("Eliminar seleccionadas", type="primary", key="del", help="Acción irreversible", kwargs={},):
+        to_delete = st.multiselect("Selecciona por índice para eliminar", options=list(st.session_state.df.index))
+        if st.button("Eliminar seleccionadas", type="primary", key="del"):
             st.session_state.df.drop(index=to_delete, inplace=True)
             st.session_state.df.reset_index(drop=True, inplace=True)
             st.success("Filas eliminadas.")
 
-# ---------- EXPORTAR A EXCEL ----------
+# Exportar Excel
 def to_excel_bytes(df: pd.DataFrame) -> bytes:
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="Matriz")
     return buffer.getvalue()
 
-colL, colR = st.columns([1,1])
-with colL:
-    st.download_button(
-        "⬇️ Exportar a Excel",
-        data=to_excel_bytes(st.session_state.df),
-        file_name="matriz_servqual_aprofam.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
-with colR:
-    st.caption("Consejo: guarda tu Excel como respaldo periódico de seguimiento.")
+st.download_button(
+    "⬇️ Exportar a Excel",
+    data=to_excel_bytes(st.session_state.df),
+    file_name="matriz_servqual_aprofam.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+)
