@@ -170,6 +170,8 @@ SUBPROBLEMAS = {
     "EXP_P027": ["EXP_P027A - Mejor otros","EXP_P027B - No siempre","EXP_P027C - Baja oferta","EXP_P027D - Poca confianza"],
     "EXP_P028": ["EXP_P028A - Mala experiencia","EXP_P028B - Mejor otras","EXP_P028C - No recomendaría","EXP_P028D - Problemas generales"],
 }
+
+ALL_SUBP_OPTIONS = sorted({opt for lst in SUBPROBLEMAS.values() for opt in lst})
 # ---------- ESTADO INICIAL ----------
 DEFAULT_COLS = [
     "Código","Dimensión","Pregunta evaluada","Subproblema identificado","Causa raíz",
@@ -308,7 +310,7 @@ edited = st.data_editor(
         "Código": st.column_config.SelectboxColumn(options=[c for c,_ in PREGUNTAS], help="Código de la pregunta"),
         "Dimensión": st.column_config.SelectboxColumn(options=CAT_DIM),
         "Pregunta evaluada": st.column_config.SelectboxColumn(options=[f"{c} – {t}" for c,t in PREGUNTAS], width="large", help="Se muestra el texto completo"),
-        "Subproblema identificado": st.column_config.TextColumn(help="Escribe o usa el asistente de abajo para sugerencias por código"),
+        "Subproblema identificado": st.column_config.SelectboxColumn(options=[""]+ALL_SUBP_OPTIONS, help="Elige un subproblema (lista global). Usa el asistente para ver solo los de este código."),
         "Responsable": st.column_config.SelectboxColumn(options=[""]+CAT_RESPONSABLES),
         "Plazo": st.column_config.TextColumn(help=f"Formato sugerido: {CAT_PLAZO_SUG}"),
         "Estado": st.column_config.SelectboxColumn(options=CAT_ESTADO),
