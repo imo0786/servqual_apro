@@ -125,6 +125,19 @@ MAP_DIM = {
 }
 
 # ---------- ESTADO INICIAL ----------
+# ---------- TYPE COERCION ----------
+def _coerce_types(df: pd.DataFrame) -> pd.DataFrame:
+    if "Fecha seguimiento" in df.columns:
+        df["Fecha seguimiento"] = pd.to_datetime(df["Fecha seguimiento"], errors="coerce").dt.date
+    if "% Avance" in df.columns:
+        df["% Avance"] = pd.to_numeric(df["% Avance"], errors="coerce").fillna(0).astype(int)
+    # Ensure object dtype for select columns
+    for c in ["Código","Dimensión","Pregunta evaluada","Subproblema identificado","Causa raíz",
+              "Acción correctiva","Responsable","Plazo","Estado","Sucursal"]:
+        if c in df.columns:
+            df[c] = df[c].astype(object)
+    return df
+
 DEFAULT_COLS = [
     "Código","Dimensión","Pregunta evaluada","Subproblema identificado","Causa raíz",
     "Acción correctiva","Fecha seguimiento","Responsable","Plazo","Estado","% Avance","Sucursal"
@@ -209,7 +222,7 @@ if st.button("➕ Agregar por dimensión", type="primary"):
             "Subproblema identificado": "",
             "Causa raíz": "",
             "Acción correctiva": "",
-            "Fecha seguimiento": date.today().isoformat(),
+            "Fecha seguimiento": date.today(),
             "Responsable": resp_to_add,
             "Plazo": "30 días",
             "Estado": estado_to_add,
@@ -218,6 +231,7 @@ if st.button("➕ Agregar por dimensión", type="primary"):
         })
     if new_rows:
         st.session_state.df = pd.concat([st.session_state.df, pd.DataFrame(new_rows)], ignore_index=True)
+        st.session_state.df = _coerce_types(st.session_state.df)
         # Defer filter changes to next rerun to avoid StreamlitAPIException
         st.session_state["_override_filters"] = {
             "f_dim": dim_to_add,
@@ -233,6 +247,8 @@ st.divider()
 # =====================
 # 3) MATRIZ (EDITABLE)
 # =====================
+st.session_state.df = _coerce_types(st.session_state.df)
+
 df_view = st.session_state.df.copy()
 if f_dim != "Todas":
     df_view = df_view[df_view["Dimensión"] == f_dim]
@@ -255,7 +271,7 @@ edited = st.data_editor(
         "Código": st.column_config.SelectboxColumn(options=[c for c,_ in PREGUNTAS]),
         "Dimensión": st.column_config.SelectboxColumn(options=CAT_DIM),
         "Pregunta evaluada": st.column_config.SelectboxColumn(options=[f"{c} – {t}" for c,t in PREGUNTAS], width="large"),
-        "Responsable": st.column_config.SelectboxColumn(options=CAT_RESPONSABLES),
+        "Responsable": st.column_config.SelectboxColumn(options=[""]+CAT_RESPONSABLES),
         "Plazo": st.column_config.SelectboxColumn(options=["15 días","30 días","45 días","60 días"]),
         "Estado": st.column_config.SelectboxColumn(options=CAT_ESTADO),
         "Sucursal": st.column_config.SelectboxColumn(options=SUCURSALES),
