@@ -310,7 +310,7 @@ edited = st.data_editor(
         "Pregunta evaluada": st.column_config.SelectboxColumn(options=[f"{c} – {t}" for c,t in PREGUNTAS], width="large", help="Se muestra el texto completo"),
         "Subproblema identificado": st.column_config.TextColumn(help="Escribe o usa el asistente de abajo para sugerencias por código"),
         "Responsable": st.column_config.SelectboxColumn(options=[""]+CAT_RESPONSABLES),
-        "Plazo": st.column_config.TextColumn(placeholder=CAT_PLAZO_SUG, help=f"Formato sugerido: {CAT_PLAZO_SUG}"),
+        "Plazo": st.column_config.TextColumn(help=f"Formato sugerido: {CAT_PLAZO_SUG}"),
         "Estado": st.column_config.SelectboxColumn(options=CAT_ESTADO),
         "Sucursal": st.column_config.SelectboxColumn(options=SUCURSALES),
         "% Avance": st.column_config.NumberColumn(format="%.0f", min_value=0, max_value=100, step=5),
